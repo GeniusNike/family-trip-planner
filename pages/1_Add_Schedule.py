@@ -55,18 +55,13 @@ memo = st.text_area("메모", height=140, placeholder="주소/링크/메모")
 st.divider()
 st.subheader("사진 추가")
 
-# 1) Clipboard paste (PC)
 paste_result = paste_image_button("📋 클립보드 이미지 붙여넣기")
-
-# 2) Upload (mobile / fallback)
 uploaded = st.file_uploader("📷 사진 업로드", type=["png", "jpg", "jpeg", "webp"])
 
 img_bytes = None
 mime = None
 
-# streamlit-paste-button returns a PasteResult with .image_data
 if paste_result is not None and getattr(paste_result, "image_data", None) is not None:
-    # image_data can be a PIL.Image or bytes depending on version; handle both.
     img = paste_result.image_data
     if isinstance(img, Image.Image):
         buf = io.BytesIO()
@@ -90,14 +85,12 @@ st.divider()
 
 can_save = bool(title.strip())
 if st.button("✅ 저장", type="primary", use_container_width=True, disabled=not can_save):
-    # Ensure images folder on Drive
     service = drive_store._drive_service()
     images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
 
     image_file_id = None
     if img_bytes:
         ts = int(time.time())
-        # keep extension simple
         ext = "png" if (mime or "").lower().endswith("png") else "jpg"
         safe_trip = trip_name.replace(" ", "_")
         filename = f"{safe_trip}_{date_str}_{ts}.{ext}"
@@ -114,7 +107,6 @@ if st.button("✅ 저장", type="primary", use_container_width=True, disabled=no
 
     trip["items"].append(item)
 
-    # Sort by date/time/created
     def _sort_key(x):
         t = x.get("time") or ""
         return (x.get("date") or "", t, x.get("ts") or 0)

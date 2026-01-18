@@ -6,7 +6,7 @@ st.set_page_config(page_title="가족 여행 플래너", page_icon="🧳", layou
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
 
 st.title("🧳 가족 여행 플래너 (간단 MVP)")
-st.caption("Streamlit Cloud + Google Drive 저장 / 일정(메모+사진) / 붙여넣기 버튼 + 업로드")
+st.caption("Streamlit Cloud + Google Drive 저장(OAuth) / 일정(메모+사진)")
 
 db = load_db(ROOT_FOLDER_ID)
 
@@ -39,9 +39,4 @@ st.markdown(
 - 왼쪽 사이드바에서 **일정 추가**로 일정/사진을 넣고,
 - **일정 보기**에서 여행별로 카드 형태로 확인해.
 """
-)
-
-st.info(
-    "Google Drive 폴더 아래에 trips.json 과 images/가 생성/업데이트됩니다.\n"
-    "비밀번호 게이트는 원하면 나중에 10줄 내로 바로 추가 가능!"
 )

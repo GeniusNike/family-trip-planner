@@ -27,7 +27,6 @@ if not items:
     st.info("아직 일정이 없어. '일정 추가'에서 추가해줘.")
     st.stop()
 
-# Group by date
 grouped = {}
 for it in items:
     d = it.get("date", "미정")
@@ -66,6 +65,4 @@ for d in dates_sorted:
                 if img:
                     st.image(img, use_container_width=True)
                 else:
-                    st.caption("이미지를 불러오지 못했어(권한/파일 문제일 수 있음).")
-
-st.caption("팁) 이미지가 안 보이면: 서비스계정(client_email)이 해당 Drive 폴더에 '편집자'로 공유됐는지 확인해줘.")
+                    st.caption("이미지를 불러오지 못했어(권한/토큰 문제일 수 있음).")

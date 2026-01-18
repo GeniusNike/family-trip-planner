@@ -3,7 +3,10 @@ import json
 from typing import Optional, Dict, Any, List
 
 import streamlit as st
-from google.oauth2 import service_account
+
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
@@ -14,23 +17,32 @@ IMAGES_FOLDER_NAME = "images"
 
 def _drive_service():
     """
-    Create Google Drive API client using a Service Account stored in Streamlit secrets.
+    OAuth 방식 (개인 Gmail용)
 
-    Streamlit Cloud Secrets example:
+    Streamlit Secrets 예시:
 
-    [gcp_service_account]
-    type = "service_account"
-    project_id = "..."
-    private_key_id = "..."
-    private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-    client_email = "xxx@xxx.iam.gserviceaccount.com"
+    [drive]
+    root_folder_id = "..."
+
+    [oauth]
     client_id = "..."
+    client_secret = "..."
+    refresh_token = "..."
     token_uri = "https://oauth2.googleapis.com/token"
     """
-    creds = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
+    oauth = st.secrets["oauth"]
+
+    creds = Credentials(
+        token=None,
+        refresh_token=oauth["refresh_token"],
+        token_uri=oauth.get("token_uri", "https://oauth2.googleapis.com/token"),
+        client_id=oauth["client_id"],
+        client_secret=oauth["client_secret"],
         scopes=SCOPES,
     )
+
+    # token=None이라 첫 호출 전에 refresh가 필요
+    creds.refresh(Request())
     return build("drive", "v3", credentials=creds)
 
 
@@ -101,7 +113,6 @@ def load_db(root_folder_id: str) -> Dict[str, Any]:
     try:
         return download_json(service, fid)
     except Exception:
-        # In case the JSON gets corrupted
         return {"trips": []}
 
 
