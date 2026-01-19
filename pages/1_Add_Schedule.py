@@ -1,6 +1,7 @@
 import io
 import time
 import uuid
+import hashlib
 from datetime import datetime, date
 from urllib.parse import quote_plus
 
@@ -24,6 +25,12 @@ trip_names = list_trip_names(db)
 
 if "draft_images" not in st.session_state:
     st.session_state["draft_images"] = []  # list of (bytes, mime)
+if "last_paste_sig" not in st.session_state:
+    st.session_state["last_paste_sig"] = None
+
+if "add_cal_ym" not in st.session_state:
+    today = date.today()
+    st.session_state["add_cal_ym"] = (today.year, today.month)
 
 with st.sidebar:
     st.subheader("여행 선택/생성")
@@ -40,13 +47,12 @@ if not trip_names:
     st.info("왼쪽에서 여행을 먼저 만들어줘.")
     st.stop()
 
-trip_name = st.selectbox("여행", options=trip_names)
+trip_name = st.selectbox("여행", options=trip_names, key="add_trip_select")
 trip = get_trip(db, trip_name)
 if not trip:
     st.error("여행을 찾을 수 없어. 새로고침 후 다시 시도해줘.")
     st.stop()
 
-# Calendar: month picker + month view
 items = trip.get("items", []) or []
 events = {}
 for it in items:
@@ -54,8 +60,28 @@ for it in items:
     if d:
         events.setdefault(d, []).append({"time": it.get("time",""), "title": it.get("title","")})
 
-cal_month = st.date_input("달력 월 선택", value=date.today(), help="이 달의 일정이 한 번에 보여요.")
-render_month_calendar(events, cal_month.year, cal_month.month, title="📅 이 여행 일정 달력")
+y, m = st.session_state["add_cal_ym"]
+c1, c2, c3 = st.columns([1, 2, 1])
+with c1:
+    if st.button("◀ 이전달", use_container_width=True):
+        if m == 1:
+            y, m = y - 1, 12
+        else:
+            y, m = y, m - 1
+        st.session_state["add_cal_ym"] = (y, m)
+        st.rerun()
+with c2:
+    st.markdown(f"### {y}년 {m}월")
+with c3:
+    if st.button("다음달 ▶", use_container_width=True):
+        if m == 12:
+            y, m = y + 1, 1
+        else:
+            y, m = y, m + 1
+        st.session_state["add_cal_ym"] = (y, m)
+        st.rerun()
+
+render_month_calendar(events, y, m, title="📅 이 여행 일정 달력")
 
 st.divider()
 
@@ -83,14 +109,23 @@ st.subheader("사진 추가(여러 장)")
 paste_result = paste_image_button("📋 클립보드 이미지 붙여넣기(누적)")
 if paste_result is not None and getattr(paste_result, "image_data", None) is not None:
     img = paste_result.image_data
+    raw = None
+    mime = "image/png"
     if isinstance(img, Image.Image):
         buf = io.BytesIO()
         img.save(buf, format="PNG")
-        st.session_state["draft_images"].append((buf.getvalue(), "image/png"))
-        st.success("붙여넣기 이미지 1장 추가됨(저장 전).")
+        raw = buf.getvalue()
     elif isinstance(img, (bytes, bytearray)):
-        st.session_state["draft_images"].append((bytes(img), "image/png"))
-        st.success("붙여넣기 이미지 1장 추가됨(저장 전).")
+        raw = bytes(img)
+
+    if raw:
+        sig = hashlib.sha1(raw).hexdigest()
+        if sig != st.session_state["last_paste_sig"]:
+            st.session_state["draft_images"].append((raw, mime))
+            st.session_state["last_paste_sig"] = sig
+            st.success("붙여넣기 이미지 1장 추가됨(저장 전).")
+        else:
+            st.info("같은 이미지가 반복 감지되어 추가하지 않았어(중복 방지).")
 
 uploaded_files = st.file_uploader(
     "📷 사진 업로드(여러 장 가능)",
@@ -109,6 +144,7 @@ if st.session_state["draft_images"]:
         cols[i % 3].image(b, use_container_width=True)
     if st.button("🧹 이미지 선택 전부 비우기", use_container_width=True):
         st.session_state["draft_images"] = []
+        st.session_state["last_paste_sig"] = None
         st.rerun()
 
 st.divider()
@@ -146,6 +182,12 @@ if st.button("✅ 저장", type="primary", use_container_width=True, disabled=no
     trip["items"] = sorted(trip["items"], key=_sort_key)
 
     save_db(ROOT_FOLDER_ID, db)
+
     st.session_state["draft_images"] = []
-    st.success("저장 완료!")
-    st.rerun()
+    st.session_state["last_paste_sig"] = None
+
+    st.success("저장되었습니다. 일정 보기로 이동합니다…")
+    try:
+        st.switch_page("pages/2_View_Schedule.py")
+    except Exception:
+        st.info("왼쪽 메뉴에서 '일정 보기'로 이동해줘.")

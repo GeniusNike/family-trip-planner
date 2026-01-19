@@ -21,7 +21,7 @@ if not trip_names:
     st.info("아직 여행이 없어. 홈에서 여행을 먼저 만들어줘.")
     st.stop()
 
-trip_name = st.selectbox("여행 선택", options=trip_names)
+trip_name = st.selectbox("여행 선택", options=trip_names, key="view_trip_select")
 trip = get_trip(db, trip_name)
 if not trip:
     st.error("여행을 찾을 수 없어. 새로고침 후 다시 시도해줘.")
@@ -32,7 +32,10 @@ if not items:
     st.info("아직 일정이 없어. '일정 추가'에서 추가해줘.")
     st.stop()
 
-# Backward compatibility
+if "view_cal_ym" not in st.session_state:
+    today = date.today()
+    st.session_state["view_cal_ym"] = (today.year, today.month)
+
 for idx, it in enumerate(items):
     if "image_file_ids" not in it:
         it["image_file_ids"] = [it["image_file_id"]] if it.get("image_file_id") else []
@@ -78,18 +81,36 @@ if not dates_sorted:
 
 day_map = {d: i + 1 for i, d in enumerate(dates_sorted)}
 
-# Calendar month view
 events = {}
 for d in dates_sorted:
     for it in grouped[d]:
         events.setdefault(d, []).append({"time": it.get("time",""), "title": it.get("title","")})
 
-cal_month = st.date_input("달력 월 선택", value=date.today(), help="이 달의 일정이 한 번에 보여요.")
-render_month_calendar(events, cal_month.year, cal_month.month, title="📅 일정 달력")
+y, m = st.session_state["view_cal_ym"]
+c1, c2, c3 = st.columns([1, 2, 1])
+with c1:
+    if st.button("◀ 이전달", key="view_prev", use_container_width=True):
+        if m == 1:
+            y, m = y - 1, 12
+        else:
+            y, m = y, m - 1
+        st.session_state["view_cal_ym"] = (y, m)
+        st.rerun()
+with c2:
+    st.markdown(f"### {y}년 {m}월")
+with c3:
+    if st.button("다음달 ▶", key="view_next", use_container_width=True):
+        if m == 12:
+            y, m = y + 1, 1
+        else:
+            y, m = y, m + 1
+        st.session_state["view_cal_ym"] = (y, m)
+        st.rerun()
+
+render_month_calendar(events, y, m, title="📅 일정 달력")
 
 st.divider()
 
-# helpers
 if "confirm_delete_id" not in st.session_state:
     st.session_state["confirm_delete_id"] = None
 
@@ -140,7 +161,6 @@ def _sort_key(x):
 for d in dates_sorted:
     grouped[d] = sorted(grouped[d], key=_sort_key)
 
-# view modes
 if view_mode == "표":
     rows = []
     for d in dates_sorted:
@@ -161,7 +181,6 @@ elif view_mode == "타임라인":
     for d in dates_sorted:
         day_items = grouped[d]
         st.subheader(f"Day {day_map[d]} · 📅 {d}")
-
         route_url = _day_route_url(day_items)
         if route_url:
             st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
@@ -173,7 +192,6 @@ elif view_mode == "타임라인":
             title = (it.get("title") or "").strip()
             map_url = (it.get("map_url") or "").strip()
             prefix = circ[idx2-1] if idx2 <= len(circ) else f"{idx2}."
-
             cols = st.columns([1, 6, 2])
             cols[0].markdown(f"### {prefix}")
             cols[1].markdown(f"**{t} {title}**".strip())
@@ -188,7 +206,6 @@ else:
     for d in dates_sorted:
         day_items = grouped[d]
         st.subheader(f"Day {day_map[d]} · 📅 {d}")
-
         route_url = _day_route_url(day_items)
         if route_url:
             st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
@@ -203,11 +220,9 @@ else:
 
             with st.container(border=True):
                 st.markdown(f"**{head}**")
-
                 map_url = (it.get("map_url") or "").strip()
                 if map_url:
                     st.markdown(f"🗺️ [지도 열기]({map_url})")
-
                 memo = (it.get("memo") or "").strip()
                 if memo:
                     st.write(memo)
