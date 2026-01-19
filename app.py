@@ -5,8 +5,8 @@ st.set_page_config(page_title="가족 여행 플래너", page_icon="🧳", layou
 
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
 
-st.title("🧳 가족 여행 플래너 (간단 MVP)")
-st.caption("Streamlit Cloud + Google Drive 저장(OAuth) / 일정(메모+사진)")
+st.title("🧳 가족 여행 플래너")
+st.caption("Streamlit Cloud + Google Drive 저장(OAuth)")
 
 db = load_db(ROOT_FOLDER_ID)
 
@@ -35,8 +35,10 @@ with col2:
 st.divider()
 st.markdown(
     """
-### 사용법
-- 왼쪽 사이드바에서 **일정 추가**로 일정/사진을 넣고,
-- **일정 보기**에서 여행별로 카드 형태로 확인해.
+### 추가된 기능
+- 일정 **수정/삭제** (확인창 포함)
+- 일정당 **사진 여러 장**
+- **구글맵 링크 버튼**(주소/링크 입력)
+- 날짜별 **Day 1 / Day 2** 자동 표시
 """
 )

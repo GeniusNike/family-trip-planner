@@ -41,7 +41,6 @@ def _drive_service():
         scopes=SCOPES,
     )
 
-    # token=None이라 첫 호출 전에 refresh가 필요
     creds.refresh(Request())
     return build("drive", "v3", credentials=creds)
 
@@ -119,11 +118,6 @@ def load_db(root_folder_id: str) -> Dict[str, Any]:
 def save_db(root_folder_id: str, db: Dict[str, Any]) -> None:
     service = _drive_service()
     upload_json(service, root_folder_id, DB_FILENAME, db)
-
-
-def get_images_folder_id(root_folder_id: str) -> str:
-    service = _drive_service()
-    return ensure_subfolder(service, root_folder_id, IMAGES_FOLDER_NAME)
 
 
 def get_image_bytes(image_file_id: str) -> Optional[bytes]:
