@@ -1,7 +1,7 @@
 import io
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from urllib.parse import quote_plus
 
 import streamlit as st
@@ -10,6 +10,7 @@ from streamlit_paste_button import paste_image_button
 
 import drive_store
 from drive_store import load_db, save_db, get_trip, list_trip_names
+from calendar_ui import render_month_calendar
 
 st.set_page_config(page_title="일정 추가", page_icon="📝", layout="centered")
 
@@ -21,7 +22,6 @@ st.caption("PC: 캡쳐 후 '붙여넣기' 버튼 / 폰: 사진 업로드(여러 
 db = load_db(ROOT_FOLDER_ID)
 trip_names = list_trip_names(db)
 
-# session buffer for pasted/uploaded images (so you can add multiple before saving)
 if "draft_images" not in st.session_state:
     st.session_state["draft_images"] = []  # list of (bytes, mime)
 
@@ -29,7 +29,6 @@ with st.sidebar:
     st.subheader("여행 선택/생성")
     if st.button("🔄 새로고침", use_container_width=True):
         st.rerun()
-
     new_trip = st.text_input("새 여행 이름", placeholder="예: 2026 오사카")
     if st.button("➕ 여행 만들기", use_container_width=True, disabled=not new_trip.strip()):
         db["trips"].append({"name": new_trip.strip(), "items": []})
@@ -47,6 +46,19 @@ if not trip:
     st.error("여행을 찾을 수 없어. 새로고침 후 다시 시도해줘.")
     st.stop()
 
+# Calendar: month picker + month view
+items = trip.get("items", []) or []
+events = {}
+for it in items:
+    d = it.get("date")
+    if d:
+        events.setdefault(d, []).append({"time": it.get("time",""), "title": it.get("title","")})
+
+cal_month = st.date_input("달력 월 선택", value=date.today(), help="이 달의 일정이 한 번에 보여요.")
+render_month_calendar(events, cal_month.year, cal_month.month, title="📅 이 여행 일정 달력")
+
+st.divider()
+
 colA, colB = st.columns([1, 1])
 with colA:
     date_str = st.date_input("날짜", value=datetime.now().date()).strftime("%Y-%m-%d")
@@ -57,17 +69,17 @@ title = st.text_input("제목", placeholder="예: 공항 이동 / 맛집 / 관�
 memo = st.text_area("메모", height=120, placeholder="메모(선택)")
 
 map_input = st.text_input("구글맵 링크 또는 주소(선택)", placeholder="예: https://maps.app.goo.gl/... 또는 서울역")
+map_text = map_input.strip()
 map_url = ""
-if map_input.strip():
-    if map_input.strip().lower().startswith("http"):
-        map_url = map_input.strip()
+if map_text:
+    if map_text.lower().startswith("http"):
+        map_url = map_text
     else:
-        map_url = "https://www.google.com/maps/search/?api=1&query=" + quote_plus(map_input.strip())
+        map_url = "https://www.google.com/maps/search/?api=1&query=" + quote_plus(map_text)
 
 st.divider()
 st.subheader("사진 추가(여러 장)")
 
-# paste (one at a time, can repeat)
 paste_result = paste_image_button("📋 클립보드 이미지 붙여넣기(누적)")
 if paste_result is not None and getattr(paste_result, "image_data", None) is not None:
     img = paste_result.image_data
@@ -79,29 +91,22 @@ if paste_result is not None and getattr(paste_result, "image_data", None) is not
     elif isinstance(img, (bytes, bytearray)):
         st.session_state["draft_images"].append((bytes(img), "image/png"))
         st.success("붙여넣기 이미지 1장 추가됨(저장 전).")
-    else:
-        st.warning("붙여넣기 이미지 형식을 처리하지 못했어. 업로드로 시도해줘.")
 
-# upload multiple
 uploaded_files = st.file_uploader(
     "📷 사진 업로드(여러 장 가능)",
     type=["png", "jpg", "jpeg", "webp"],
     accept_multiple_files=True,
 )
-
 if uploaded_files:
     for uf in uploaded_files:
         st.session_state["draft_images"].append((uf.getvalue(), uf.type or "image/png"))
     st.success(f"업로드 이미지 {len(uploaded_files)}장 추가됨(저장 전).")
 
-# preview draft images
 if st.session_state["draft_images"]:
     st.caption(f"현재 추가된 이미지: {len(st.session_state['draft_images'])}장")
     cols = st.columns(3)
     for i, (b, _) in enumerate(st.session_state["draft_images"][:9]):
         cols[i % 3].image(b, use_container_width=True)
-    if len(st.session_state["draft_images"]) > 9:
-        st.caption("미리보기는 최대 9장까지 표시했어.")
     if st.button("🧹 이미지 선택 전부 비우기", use_container_width=True):
         st.session_state["draft_images"] = []
         st.rerun()
@@ -114,7 +119,6 @@ if st.button("✅ 저장", type="primary", use_container_width=True, disabled=no
     images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
 
     image_file_ids = []
-    # upload all draft images
     for (img_bytes, mime) in st.session_state["draft_images"]:
         ts = int(time.time() * 1000)
         ext = "png" if (mime or "").lower().endswith("png") else "jpg"
@@ -129,22 +133,19 @@ if st.button("✅ 저장", type="primary", use_container_width=True, disabled=no
         "time": time_str.strip(),
         "title": title.strip(),
         "memo": memo.strip(),
+        "map_text": map_text,
         "map_url": map_url,
         "image_file_ids": image_file_ids,
         "ts": int(time.time()),
     }
-
     trip["items"].append(item)
 
     def _sort_key(x):
         t = x.get("time") or ""
         return (x.get("date") or "", t, x.get("ts") or 0)
-
     trip["items"] = sorted(trip["items"], key=_sort_key)
 
     save_db(ROOT_FOLDER_ID, db)
     st.session_state["draft_images"] = []
     st.success("저장 완료!")
     st.rerun()
-
-st.caption("팁) PC: 캡쳐(Ctrl+C) → 붙여넣기 버튼 클릭(여러 번 가능) → 저장")

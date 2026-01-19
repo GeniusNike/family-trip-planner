@@ -16,22 +16,7 @@ IMAGES_FOLDER_NAME = "images"
 
 
 def _drive_service():
-    """
-    OAuth 방식 (개인 Gmail용)
-
-    Streamlit Secrets 예시:
-
-    [drive]
-    root_folder_id = "..."
-
-    [oauth]
-    client_id = "..."
-    client_secret = "..."
-    refresh_token = "..."
-    token_uri = "https://oauth2.googleapis.com/token"
-    """
     oauth = st.secrets["oauth"]
-
     creds = Credentials(
         token=None,
         refresh_token=oauth["refresh_token"],
@@ -40,7 +25,6 @@ def _drive_service():
         client_secret=oauth["client_secret"],
         scopes=SCOPES,
     )
-
     creds.refresh(Request())
     return build("drive", "v3", credentials=creds)
 
