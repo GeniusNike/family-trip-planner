@@ -1,6 +1,7 @@
 import calendar as _cal
 from collections import defaultdict
 from html import escape
+from urllib.parse import urlencode
 
 import streamlit as st
 
@@ -12,12 +13,17 @@ def render_month_calendar(
     title: str = "📅 달력",
     max_events_per_day: int = 6,
     cell_height_px: int = 170,
+    link_param: str = "jump",
+    link_base_params: dict | None = None,
 ):
     """
-    v3.6
-    - ✅ 모바일에서 미디어쿼리가 안 먹는 문제 해결: iframe 내부에 viewport meta 추가
-    - ✅ 다크모드 가독성 개선: prefers-color-scheme: dark 스타일 추가(배경/테두리/글자)
-    - ✅ 모바일 콤팩트 모드: 일정 텍스트 숨기고 ● 점 + 개수로 표시(한 화면에 들어오게)
+    v3.7
+    - 날짜(숫자)를 누르면 같은 페이지를 query param으로 다시 열도록 링크 제공
+      예) ?trip=...&jump=2026-02-15
+    - 페이지에서 query param(jump)을 읽어서 해당 날짜 섹션으로 스크롤/이동 처리 가능
+
+    v3.6 유지
+    - 모바일 콤팩트(● 점 + 개수), 다크모드 가독성, viewport meta
     """
     st.subheader(title)
 
@@ -29,6 +35,11 @@ def render_month_calendar(
         by_day[k].extend(v)
 
     dow = ["일", "월", "화", "수", "목", "금", "토"]
+
+    def _href_for(date_str: str) -> str:
+        params = dict(link_base_params or {})
+        params[link_param] = date_str
+        return "?" + urlencode(params)
 
     html = []
     html.append(f"""
@@ -42,9 +53,9 @@ def render_month_calendar(
         --tp-bg: rgba(255,255,255,1);
         --tp-cell-bg: rgba(255,255,255,1);
         --tp-weekend: #d11a2a;
+        --tp-link: rgba(0,0,0,0.88);
       }}
 
-      /* ✅ Dark mode */
       @media (prefers-color-scheme: dark) {{
         :root {{
           --tp-border: rgba(255,255,255,0.14);
@@ -54,6 +65,7 @@ def render_month_calendar(
           --tp-bg: rgba(15,18,25,1);
           --tp-cell-bg: rgba(20,24,33,1);
           --tp-weekend: #ff5a66;
+          --tp-link: rgba(255,255,255,0.92);
         }}
       }}
 
@@ -94,6 +106,16 @@ def render_month_calendar(
         margin-bottom: 6px;
         color: var(--tp-text);
       }}
+      .tp-cal a.daylink {{
+        color: var(--tp-link);
+        text-decoration: none;
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 8px;
+      }}
+      .tp-cal a.daylink:hover {{
+        background: rgba(120, 160, 255, 0.18);
+      }}
       .tp-cal .evt {{
         font-size: 12px;
         line-height: 1.25;
@@ -113,7 +135,6 @@ def render_month_calendar(
         color: var(--tp-muted);
       }}
 
-      /* mobile summary */
       .tp-cal .dots {{
         display: none;
         font-size: 11px;
@@ -127,7 +148,6 @@ def render_month_calendar(
         margin-right: 2px;
       }}
 
-      /* ✅ Mobile compact mode */
       @media (max-width: 640px) {{
         .tp-cal th {{ padding: 6px 4px; font-size: 12px; }}
         .tp-cal td {{ padding: 4px; height: 74px; }}
@@ -142,7 +162,7 @@ def render_month_calendar(
     html.append('<table class="tp-cal">')
     html.append("<thead><tr>")
     for i, d in enumerate(dow):
-        cls = "weekend" if i in (0, 6) else ""  # Sunday + Saturday
+        cls = "weekend" if i in (0, 6) else ""
         html.append(f'<th class="{cls}">{d}</th>')
     html.append("</tr></thead><tbody>")
 
@@ -163,10 +183,11 @@ def render_month_calendar(
                 cls.append("weekend")
             cls_str = " ".join(cls)
 
-            html.append(f'<td class="{cls_str}">')
-            html.append(f'<div class="daynum">{d.day}</div>')
+            href = _href_for(key)
 
-            # Desktop list
+            html.append(f'<td class="{cls_str}">')
+            html.append(f'<div class="daynum"><a class="daylink" href="{href}">{d.day}</a></div>')
+
             shown = 0
             for e in evts:
                 if shown >= max_events_per_day:
@@ -180,7 +201,6 @@ def render_month_calendar(
             if len(evts) > max_events_per_day:
                 html.append(f'<div class="more">+{len(evts)-max_events_per_day} 더보기</div>')
 
-            # Mobile dots summary
             if len(evts) == 0:
                 html.append('<div class="dots"></div>')
             else:
@@ -193,5 +213,4 @@ def render_month_calendar(
         html.append("</tr>")
     html.append("</tbody></table></div>")
 
-    # 조금 더 크게 잡아도 모바일에선 칸이 작아서 한 화면에 더 잘 들어옴
     st.components.v1.html("".join(html), height=820, scrolling=True)

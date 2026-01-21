@@ -18,6 +18,10 @@ st.set_page_config(page_title="일정 추가", page_icon="📝", layout="centere
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
 
 st.title("📝 일정 추가")
+
+# v3.7: 달력 날짜 클릭 시 jump(YYYY-MM-DD)로 날짜 자동 선택
+jump_date_str = st.query_params.get("jump", "")
+
 st.caption("PC: 캡쳐 후 '붙여넣기' 버튼 / 폰: 사진 업로드(여러 장 가능)")
 
 db = load_db(ROOT_FOLDER_ID)
@@ -81,7 +85,7 @@ with c3:
         st.session_state["add_cal_ym"] = (y, m)
         st.rerun()
 
-render_month_calendar(events, y, m, title="📅 이 여행 일정 달력")
+render_month_calendar(events, y, m, title="📅 이 여행 일정 달력", link_base_params={"trip": trip_name})
 
 st.divider()
 

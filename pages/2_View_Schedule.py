@@ -22,11 +22,23 @@ st.title("👀 일정 보기")
 db = load_db(ROOT_FOLDER_ID)
 trip_names = list_trip_names(db)
 
+# v3.7: 달력에서 날짜 클릭 시 trip/jump를 query param으로 유지
+qp_trip = st.query_params.get("trip", "")
+qp_jump = st.query_params.get("jump", "")
+
 if not trip_names:
     st.info("아직 여행이 없어. 홈에서 여행을 먼저 만들어줘.")
     st.stop()
 
-trip_name = st.selectbox("여행 선택", options=trip_names, key="view_trip_select")
+default_trip = None
+if isinstance(qp_trip, list):
+    qp_trip_val = qp_trip[0] if qp_trip else ""
+else:
+    qp_trip_val = qp_trip
+if qp_trip_val and qp_trip_val in trip_names:
+    default_trip = qp_trip_val
+default_index = trip_names.index(default_trip) if default_trip else 0
+trip_name = st.selectbox("여행 선택", options=trip_names, index=default_index, key="view_trip_select")
 trip = get_trip(db, trip_name)
 if not trip:
     st.error("여행을 찾을 수 없어. 새로고침 후 다시 시도해줘.")
@@ -120,9 +132,29 @@ with c3:
         st.session_state["view_cal_ym"] = (y, m)
         st.rerun()
 
-render_month_calendar(events, y, m, title="📅 일정 달력")
+render_month_calendar(events, y, m, title="📅 일정 달력", link_base_params={"trip": trip_name})
 
 st.divider()
+
+# v3.7: 달력에서 날짜 클릭 시 해당 Day 섹션으로 자동 스크롤
+jump_val = ''
+if isinstance(qp_jump, list):
+    jump_val = qp_jump[0] if qp_jump else ''
+else:
+    jump_val = qp_jump or ''
+if jump_val:
+    st.components.v1.html(f"""
+    <script>
+      const targetId = 'day-anchor-' + {jump_val!r};
+      // streamlit은 콘텐츠 렌더링이 늦을 수 있어서 약간 기다렸다가 스크롤
+      setTimeout(() => {{
+        try {{
+          const el = window.parent.document.getElementById(targetId);
+          if (el) el.scrollIntoView({{behavior:'smooth', block:'start'}});
+        }} catch(e) {{}}
+      }}, 300);
+    </script>
+    """, height=0)
 
 if "confirm_delete_id" not in st.session_state:
     st.session_state["confirm_delete_id"] = None
@@ -194,7 +226,9 @@ if view_mode == "타임라인":
     circ = "①②③④⑤⑥⑦⑧⑨⑩"
     for d in dates_sorted:
         day_items = grouped[d]
-        st.subheader(f"Day {day_map[d]} · 📅 {d}")
+        st.markdown(f"<div id='day-anchor-{d}'></div>", unsafe_allow_html=True)
+        st.markdown(f"<div id='day-anchor-{d}'></div>", unsafe_allow_html=True)
+    st.subheader(f"Day {day_map[d]} · 📅 {d}")
         route_url = _day_route_url(day_items)
         if route_url:
             st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
@@ -220,7 +254,8 @@ if view_mode == "타임라인":
 # Card view
 for d in dates_sorted:
     day_items = grouped[d]
-    st.subheader(f"Day {day_map[d]} · 📅 {d}")
+    st.markdown(f"<div id='day-anchor-{d}'></div>", unsafe_allow_html=True)
+        st.subheader(f"Day {day_map[d]} · 📅 {d}")
     route_url = _day_route_url(day_items)
     if route_url:
         st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
