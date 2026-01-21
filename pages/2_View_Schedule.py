@@ -1,8 +1,13 @@
+import io
 import time
+import uuid
+import hashlib
 from datetime import date
 from urllib.parse import quote_plus, urlparse, parse_qs, unquote_plus
 
 import streamlit as st
+from PIL import Image
+from streamlit_paste_button import paste_image_button
 
 import drive_store
 from drive_store import load_db, save_db, list_trip_names, get_trip, get_image_bytes
@@ -36,6 +41,13 @@ if "view_cal_ym" not in st.session_state:
     today = date.today()
     st.session_state["view_cal_ym"] = (today.year, today.month)
 
+# edit state init
+if "edit_new_imgs" not in st.session_state:
+    st.session_state["edit_new_imgs"] = {}  # item_id -> list[(bytes,mime)]
+if "edit_last_sig" not in st.session_state:
+    st.session_state["edit_last_sig"] = {}  # item_id -> sig
+
+# Backward compatibility
 for idx, it in enumerate(items):
     if "image_file_ids" not in it:
         it["image_file_ids"] = [it["image_file_id"]] if it.get("image_file_id") else []
@@ -81,6 +93,7 @@ if not dates_sorted:
 
 day_map = {d: i + 1 for i, d in enumerate(dates_sorted)}
 
+# Calendar events + month nav
 events = {}
 for d in dates_sorted:
     for it in grouped[d]:
@@ -175,8 +188,9 @@ if view_mode == "표":
             })
     st.dataframe(rows, use_container_width=True, hide_index=True)
     st.caption("표 보기에서는 수정/삭제는 카드 보기에서 해줘.")
+    st.stop()
 
-elif view_mode == "타임라인":
+if view_mode == "타임라인":
     circ = "①②③④⑤⑥⑦⑧⑨⑩"
     for d in dates_sorted:
         day_items = grouped[d]
@@ -201,124 +215,198 @@ elif view_mode == "타임라인":
             if memo:
                 st.write(memo)
         st.divider()
+    st.stop()
 
-else:
-    for d in dates_sorted:
-        day_items = grouped[d]
-        st.subheader(f"Day {day_map[d]} · 📅 {d}")
-        route_url = _day_route_url(day_items)
-        if route_url:
-            st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
-            st.caption("구글맵에서 경유지가 입력된 순서(시간순)대로 잡혀요.")
-        else:
-            st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
+# Card view
+for d in dates_sorted:
+    day_items = grouped[d]
+    st.subheader(f"Day {day_map[d]} · 📅 {d}")
+    route_url = _day_route_url(day_items)
+    if route_url:
+        st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
+        st.caption("구글맵에서 경유지가 입력된 순서(시간순)대로 잡혀요.")
+    else:
+        st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
 
-        for it in day_items:
-            item_id = it.get("id")
-            t = (it.get("time") or "").strip()
-            head = f"{('⏰ ' + t + '  |  ') if t else ''}{it.get('title','(제목 없음)')}"
+    for it in day_items:
+        item_id = it.get("id")
+        t = (it.get("time") or "").strip()
+        head = f"{('⏰ ' + t + '  |  ') if t else ''}{it.get('title','(제목 없음)')}"
 
-            with st.container(border=True):
-                st.markdown(f"**{head}**")
-                map_url = (it.get("map_url") or "").strip()
-                if map_url:
-                    st.markdown(f"🗺️ [지도 열기]({map_url})")
-                memo = (it.get("memo") or "").strip()
-                if memo:
-                    st.write(memo)
+        with st.container(border=True):
+            st.markdown(f"**{head}**")
 
-                if show_images:
-                    ids = it.get("image_file_ids", []) or []
-                    if ids:
-                        cols = st.columns(min(3, len(ids)))
-                        for idx3, fid in enumerate(ids[:6]):
-                            img = get_image_bytes(fid)
+            map_url = (it.get("map_url") or "").strip()
+            if map_url:
+                st.markdown(f"🗺️ [지도 열기]({map_url})")
+
+            memo = (it.get("memo") or "").strip()
+            if memo:
+                st.write(memo)
+
+            if show_images:
+                ids = it.get("image_file_ids", []) or []
+                if ids:
+                    cols = st.columns(min(3, len(ids)))
+                    for idx3, fid in enumerate(ids[:6]):
+                        img = get_image_bytes(fid)
+                        if img:
+                            cols[idx3 % len(cols)].image(img, use_container_width=True)
+                    if len(ids) > 6:
+                        st.caption(f"이미지 {len(ids)}장 중 6장만 표시했어.")
+
+            c1, c2, c3 = st.columns([1, 1, 3])
+            with c1:
+                if st.button("✏️ 수정", key=f"edit_btn_{item_id}", use_container_width=True):
+                    st.session_state[f"editing_{item_id}"] = True
+            with c2:
+                if st.button("🗑️ 삭제", key=f"del_btn_{item_id}", use_container_width=True):
+                    st.session_state["confirm_delete_id"] = item_id
+            with c3:
+                if st.session_state.get("confirm_delete_id") == item_id:
+                    st.warning("정말 삭제할까?", icon="⚠️")
+                    cc1, cc2 = st.columns(2)
+                    with cc1:
+                        if st.button("삭제 확정", key=f"confirm_del_{item_id}", type="primary", use_container_width=True):
+                            _delete_item(item_id)
+                            st.session_state["confirm_delete_id"] = None
+                            st.success("삭제 완료")
+                            st.rerun()
+                    with cc2:
+                        if st.button("취소", key=f"cancel_del_{item_id}", use_container_width=True):
+                            st.session_state["confirm_delete_id"] = None
+                            st.rerun()
+
+            # ===== Edit panel =====
+            if st.session_state.get(f"editing_{item_id}"):
+                st.divider()
+                st.markdown("#### ✏️ 일정 수정")
+
+                e_date = st.text_input("날짜(YYYY-MM-DD)", value=it.get("date", ""), key=f"e_date_{item_id}")
+                e_time = st.text_input("시간(선택)", value=it.get("time", ""), key=f"e_time_{item_id}")
+                e_title = st.text_input("제목", value=it.get("title", ""), key=f"e_title_{item_id}")
+                e_memo = st.text_area("메모", value=it.get("memo", ""), height=110, key=f"e_memo_{item_id}")
+
+                e_map_text = st.text_input(
+                    "구글맵 링크 또는 주소(선택)",
+                    value=(it.get("map_text") or it.get("map_url") or ""),
+                    key=f"e_map_text_{item_id}",
+                )
+                e_map_url = _maps_search_url(e_map_text)
+
+                st.markdown("##### 🧹 기존 이미지 선택 삭제")
+                current_ids = it.get("image_file_ids", []) or []
+                kept_ids = []
+                if current_ids:
+                    colsx = st.columns(min(3, len(current_ids)))
+                    for i, fid in enumerate(current_ids[:12]):
+                        img = get_image_bytes(fid)
+                        with colsx[i % len(colsx)]:
                             if img:
-                                cols[idx3 % len(cols)].image(img, use_container_width=True)
-                        if len(ids) > 6:
-                            st.caption(f"이미지 {len(ids)}장 중 6장만 표시했어.")
+                                st.image(img, use_container_width=True)
+                            keep = st.checkbox("유지", value=True, key=f"keep_{item_id}_{fid}")
+                            if keep:
+                                kept_ids.append(fid)
+                    if len(current_ids) > 12:
+                        st.caption(f"이미지 {len(current_ids)}장 중 12장만 여기서 보여줘(삭제 선택은 12장 기준).")
+                        # 나머지는 모두 유지 처리
+                        for fid in current_ids[12:]:
+                            kept_ids.append(fid)
+                else:
+                    st.caption("기존 이미지가 없어.")
 
-                c1, c2, c3 = st.columns([1, 1, 3])
-                with c1:
-                    if st.button("✏️ 수정", key=f"edit_btn_{item_id}", use_container_width=True):
-                        st.session_state[f"editing_{item_id}"] = True
-                with c2:
-                    if st.button("🗑️ 삭제", key=f"del_btn_{item_id}", use_container_width=True):
-                        st.session_state["confirm_delete_id"] = item_id
-                with c3:
-                    if st.session_state.get("confirm_delete_id") == item_id:
-                        st.warning("정말 삭제할까?", icon="⚠️")
-                        cc1, cc2 = st.columns(2)
-                        with cc1:
-                            if st.button("삭제 확정", key=f"confirm_del_{item_id}", type="primary", use_container_width=True):
-                                _delete_item(item_id)
-                                st.session_state["confirm_delete_id"] = None
-                                st.success("삭제 완료")
-                                st.rerun()
-                        with cc2:
-                            if st.button("취소", key=f"cancel_del_{item_id}", use_container_width=True):
-                                st.session_state["confirm_delete_id"] = None
-                                st.rerun()
+                st.divider()
+                st.markdown("##### ➕ 이미지 추가(붙여넣기/업로드)")
+                added_now = False
 
-                if st.session_state.get(f"editing_{item_id}"):
-                    st.divider()
-                    st.markdown("#### ✏️ 일정 수정")
+                paste_res = paste_image_button("📋 수정 화면에서 붙여넣기(누적)", key=f"paste_edit_{item_id}")
+                if paste_res is not None and getattr(paste_res, "image_data", None) is not None:
+                    img = paste_res.image_data
+                    raw = None
+                    mime = "image/png"
+                    if isinstance(img, Image.Image):
+                        buf = io.BytesIO()
+                        img.save(buf, format="PNG")
+                        raw = buf.getvalue()
+                    elif isinstance(img, (bytes, bytearray)):
+                        raw = bytes(img)
 
-                    e_date = st.text_input("날짜(YYYY-MM-DD)", value=it.get("date", ""), key=f"e_date_{item_id}")
-                    e_time = st.text_input("시간(선택)", value=it.get("time", ""), key=f"e_time_{item_id}")
-                    e_title = st.text_input("제목", value=it.get("title", ""), key=f"e_title_{item_id}")
-                    e_memo = st.text_area("메모", value=it.get("memo", ""), height=110, key=f"e_memo_{item_id}")
+                    if raw:
+                        sig = hashlib.sha1(raw).hexdigest()
+                        last = st.session_state["edit_last_sig"].get(item_id)
+                        if sig != last:
+                            st.session_state["edit_last_sig"][item_id] = sig
+                            st.session_state["edit_new_imgs"].setdefault(item_id, [])
+                            st.session_state["edit_new_imgs"][item_id].append((raw, mime))
+                            added_now = True
+                        else:
+                            st.info("같은 이미지 중복 감지로 추가하지 않았어.")
 
-                    e_map_text = st.text_input(
-                        "구글맵 링크 또는 주소(선택)",
-                        value=(it.get("map_text") or it.get("map_url") or ""),
-                        key=f"e_map_text_{item_id}",
-                    )
-                    e_map_url = _maps_search_url(e_map_text)
+                add_files = st.file_uploader(
+                    "📷 이미지 업로드 추가(여러 장)",
+                    type=["png", "jpg", "jpeg", "webp"],
+                    accept_multiple_files=True,
+                    key=f"upload_edit_{item_id}",
+                )
+                if add_files:
+                    st.session_state["edit_new_imgs"].setdefault(item_id, [])
+                    for uf in add_files:
+                        st.session_state["edit_new_imgs"][item_id].append((uf.getvalue(), uf.type or "image/png"))
+                    added_now = True
 
-                    add_files = st.file_uploader(
-                        "이미지 추가(여러 장)",
-                        type=["png", "jpg", "jpeg", "webp"],
-                        accept_multiple_files=True,
-                        key=f"add_img_{item_id}",
-                    )
+                if added_now:
+                    st.rerun()
 
-                    a1, a2 = st.columns(2)
-                    with a1:
-                        if st.button("저장", key=f"save_edit_{item_id}", type="primary", use_container_width=True):
-                            new_ids = []
-                            if add_files:
-                                service = drive_store._drive_service()
-                                images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
-                                for uf in add_files:
-                                    ts = int(time.time() * 1000)
-                                    mime = uf.type or "image/png"
-                                    ext = "png" if (mime or "").lower().endswith("png") else "jpg"
-                                    filename = f"{trip_name.replace(' ','_')}_{e_date}_{ts}.{ext}"
-                                    nid = drive_store.upload_image_bytes(service, images_folder_id, filename, uf.getvalue(), mime)
-                                    new_ids.append(nid)
+                pending = st.session_state["edit_new_imgs"].get(item_id, []) or []
+                if pending:
+                    st.caption(f"추가 예정 이미지: {len(pending)}장")
+                    colsp = st.columns(3)
+                    for j, (b, _) in enumerate(pending[:9]):
+                        colsp[j % 3].image(b, use_container_width=True)
+                    if st.button("🧹 추가 예정 이미지 비우기", key=f"clear_pending_{item_id}", use_container_width=True):
+                        st.session_state["edit_new_imgs"][item_id] = []
+                        st.rerun()
+                else:
+                    st.caption("추가 예정 이미지 없음")
 
-                            kept_ids = [x for x in it.get("image_file_ids", []) or []]
-                            kept_ids.extend(new_ids)
+                a1, a2 = st.columns(2)
+                with a1:
+                    if st.button("저장", key=f"save_edit_{item_id}", type="primary", use_container_width=True):
+                        # upload pending images
+                        new_ids = []
+                        pending2 = st.session_state["edit_new_imgs"].get(item_id, []) or []
+                        if pending2:
+                            service = drive_store._drive_service()
+                            images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
+                            for (img_bytes, mime) in pending2:
+                                ts = int(time.time() * 1000)
+                                ext = "png" if (mime or "").lower().endswith("png") else "jpg"
+                                filename = f"{trip_name.replace(' ','_')}_{e_date}_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+                                nid = drive_store.upload_image_bytes(service, images_folder_id, filename, img_bytes, mime)
+                                new_ids.append(nid)
 
-                            _update_item(
-                                item_id,
-                                {
-                                    "date": e_date.strip(),
-                                    "time": e_time.strip(),
-                                    "title": e_title.strip(),
-                                    "memo": e_memo.strip(),
-                                    "map_text": e_map_text.strip(),
-                                    "map_url": e_map_url,
-                                    "image_file_ids": kept_ids,
-                                    "ts": it.get("ts") or int(time.time()),
-                                },
-                            )
-                            st.session_state[f"editing_{item_id}"] = False
-                            st.success("수정 완료")
-                            st.rerun()
-                    with a2:
-                        if st.button("닫기", key=f"close_edit_{item_id}", use_container_width=True):
-                            st.session_state[f"editing_{item_id}"] = False
-                            st.rerun()
-        st.divider()
+                        final_ids = kept_ids + new_ids
+
+                        _update_item(
+                            item_id,
+                            {
+                                "date": e_date.strip(),
+                                "time": e_time.strip(),
+                                "title": e_title.strip(),
+                                "memo": e_memo.strip(),
+                                "map_text": e_map_text.strip(),
+                                "map_url": e_map_url,
+                                "image_file_ids": final_ids,
+                                "ts": it.get("ts") or int(time.time()),
+                            },
+                        )
+                        st.session_state["edit_new_imgs"][item_id] = []
+                        st.session_state[f"editing_{item_id}"] = False
+                        st.success("수정 완료")
+                        st.rerun()
+                with a2:
+                    if st.button("닫기", key=f"close_edit_{item_id}", use_container_width=True):
+                        st.session_state["edit_new_imgs"][item_id] = []
+                        st.session_state[f"editing_{item_id}"] = False
+                        st.rerun()
+    st.divider()

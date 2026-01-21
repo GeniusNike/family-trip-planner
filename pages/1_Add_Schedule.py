@@ -106,6 +106,8 @@ if map_text:
 st.divider()
 st.subheader("사진 추가(여러 장)")
 
+pasted_or_uploaded_now = False
+
 paste_result = paste_image_button("📋 클립보드 이미지 붙여넣기(누적)")
 if paste_result is not None and getattr(paste_result, "image_data", None) is not None:
     img = paste_result.image_data
@@ -123,7 +125,7 @@ if paste_result is not None and getattr(paste_result, "image_data", None) is not
         if sig != st.session_state["last_paste_sig"]:
             st.session_state["draft_images"].append((raw, mime))
             st.session_state["last_paste_sig"] = sig
-            st.success("붙여넣기 이미지 1장 추가됨(저장 전).")
+            pasted_or_uploaded_now = True
         else:
             st.info("같은 이미지가 반복 감지되어 추가하지 않았어(중복 방지).")
 
@@ -135,7 +137,11 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     for uf in uploaded_files:
         st.session_state["draft_images"].append((uf.getvalue(), uf.type or "image/png"))
-    st.success(f"업로드 이미지 {len(uploaded_files)}장 추가됨(저장 전).")
+    pasted_or_uploaded_now = True
+
+# 핵심: 추가 직후 rerun → 같은 화면에서 미리보기 즉시 노출
+if pasted_or_uploaded_now:
+    st.rerun()
 
 if st.session_state["draft_images"]:
     st.caption(f"현재 추가된 이미지: {len(st.session_state['draft_images'])}장")
@@ -146,6 +152,8 @@ if st.session_state["draft_images"]:
         st.session_state["draft_images"] = []
         st.session_state["last_paste_sig"] = None
         st.rerun()
+else:
+    st.caption("아직 추가된 이미지가 없어. 붙여넣기 또는 업로드 해줘.")
 
 st.divider()
 

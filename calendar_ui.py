@@ -8,7 +8,8 @@ import streamlit as st
 def render_month_calendar(events_by_date: dict, year: int, month: int, title: str = "📅 달력"):
     """
     events_by_date: {"YYYY-MM-DD": [ {"time":..., "title":...}, ... ] }
-    주말(토/일) 빨간색 표시.
+    - 주말(토/일) 빨간색
+    - 날짜 칸에 일정 최대 3개 표시
     """
     st.subheader(title)
 
