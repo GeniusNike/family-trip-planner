@@ -14,11 +14,10 @@ def render_month_calendar(
     cell_height_px: int = 170,
 ):
     """
-    v3.5 (모바일 개선)
-    - 모바일 화면에서는 달력이 한 눈에 들어오도록 "콤팩트 모드" 자동 적용(미디어쿼리)
-      * 날짜 칸 높이/글자 축소
-      * 일정 텍스트는 숨기고 ● 점 + 개수만 표시
-    - 데스크톱에서는 기존처럼 일정 텍스트(최대 max_events_per_day) 표시
+    v3.6
+    - ✅ 모바일에서 미디어쿼리가 안 먹는 문제 해결: iframe 내부에 viewport meta 추가
+    - ✅ 다크모드 가독성 개선: prefers-color-scheme: dark 스타일 추가(배경/테두리/글자)
+    - ✅ 모바일 콤팩트 모드: 일정 텍스트 숨기고 ● 점 + 개수로 표시(한 화면에 들어오게)
     """
     st.subheader(title)
 
@@ -33,22 +32,105 @@ def render_month_calendar(
 
     html = []
     html.append(f"""
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      .tp-cal {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
-      .tp-cal th {{ padding: 8px 6px; border-bottom: 1px solid rgba(0,0,0,0.12); font-weight: 700; }}
-      .tp-cal td {{ vertical-align: top; padding: 6px; height: {int(cell_height_px)}px; border: 1px solid rgba(0,0,0,0.08); overflow: hidden; }}
-      .tp-cal .muted {{ opacity: 0.45; }}
-      .tp-cal .daynum {{ font-weight: 800; margin-bottom: 6px; }}
-      .tp-cal .evt {{ font-size: 12px; line-height: 1.25; margin: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-      .tp-cal .weekend, .tp-cal th.weekend {{ color: #d11a2a; }}
-      .tp-cal .more {{ font-size: 12px; opacity: 0.75; margin-top: 3px; }}
-      .tp-cal .dots {{ display: none; font-size: 11px; line-height: 1.2; margin-top: 6px; opacity: 0.9; }}
-      .tp-cal .dot {{ display: inline-block; margin-right: 2px; }}
+      :root {{
+        --tp-border: rgba(0,0,0,0.10);
+        --tp-border-strong: rgba(0,0,0,0.14);
+        --tp-text: rgba(0,0,0,0.88);
+        --tp-muted: rgba(0,0,0,0.45);
+        --tp-bg: rgba(255,255,255,1);
+        --tp-cell-bg: rgba(255,255,255,1);
+        --tp-weekend: #d11a2a;
+      }}
+
+      /* ✅ Dark mode */
+      @media (prefers-color-scheme: dark) {{
+        :root {{
+          --tp-border: rgba(255,255,255,0.14);
+          --tp-border-strong: rgba(255,255,255,0.18);
+          --tp-text: rgba(255,255,255,0.92);
+          --tp-muted: rgba(255,255,255,0.45);
+          --tp-bg: rgba(15,18,25,1);
+          --tp-cell-bg: rgba(20,24,33,1);
+          --tp-weekend: #ff5a66;
+        }}
+      }}
+
+      .tp-wrap {{
+        background: var(--tp-bg);
+        color: var(--tp-text);
+        border-radius: 12px;
+        padding: 6px;
+        box-sizing: border-box;
+      }}
+      .tp-cal {{
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        background: transparent;
+      }}
+      .tp-cal th {{
+        padding: 8px 6px;
+        border-bottom: 1px solid var(--tp-border-strong);
+        font-weight: 800;
+        font-size: 14px;
+        color: var(--tp-text);
+      }}
+      .tp-cal td {{
+        vertical-align: top;
+        padding: 6px;
+        height: {int(cell_height_px)}px;
+        border: 1px solid var(--tp-border);
+        overflow: hidden;
+        background: var(--tp-cell-bg);
+      }}
+      .tp-cal .muted {{
+        opacity: 0.55;
+        background: transparent;
+      }}
+      .tp-cal .daynum {{
+        font-weight: 900;
+        margin-bottom: 6px;
+        color: var(--tp-text);
+      }}
+      .tp-cal .evt {{
+        font-size: 12px;
+        line-height: 1.25;
+        margin: 3px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--tp-text);
+      }}
+      .tp-cal .weekend, .tp-cal th.weekend {{
+        color: var(--tp-weekend);
+      }}
+      .tp-cal .more {{
+        font-size: 12px;
+        opacity: 0.78;
+        margin-top: 3px;
+        color: var(--tp-muted);
+      }}
+
+      /* mobile summary */
+      .tp-cal .dots {{
+        display: none;
+        font-size: 11px;
+        line-height: 1.2;
+        margin-top: 6px;
+        opacity: 0.9;
+        color: var(--tp-text);
+      }}
+      .tp-cal .dot {{
+        display: inline-block;
+        margin-right: 2px;
+      }}
 
       /* ✅ Mobile compact mode */
       @media (max-width: 640px) {{
         .tp-cal th {{ padding: 6px 4px; font-size: 12px; }}
-        .tp-cal td {{ padding: 4px; height: 78px; }}
+        .tp-cal td {{ padding: 4px; height: 74px; }}
         .tp-cal .daynum {{ margin-bottom: 2px; font-size: 12px; }}
         .tp-cal .evt, .tp-cal .more {{ display: none; }}
         .tp-cal .dots {{ display: block; }}
@@ -56,6 +138,7 @@ def render_month_calendar(
     </style>
     """)
 
+    html.append('<div class="tp-wrap">')
     html.append('<table class="tp-cal">')
     html.append("<thead><tr>")
     for i, d in enumerate(dow):
@@ -108,6 +191,7 @@ def render_month_calendar(
 
             html.append("</td>")
         html.append("</tr>")
-    html.append("</tbody></table>")
+    html.append("</tbody></table></div>")
 
+    # 조금 더 크게 잡아도 모바일에선 칸이 작아서 한 화면에 더 잘 들어옴
     st.components.v1.html("".join(html), height=820, scrolling=True)
