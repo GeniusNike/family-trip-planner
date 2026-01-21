@@ -132,7 +132,12 @@ with c3:
         st.session_state["view_cal_ym"] = (y, m)
         st.rerun()
 
-render_month_calendar(events, y, m, title="📅 일정 달력", link_base_params={"trip": trip_name})
+try:
+    render_month_calendar(events, y, m, title="📅 일정 달력", link_base_params={"trip": trip_name})
+except TypeError:
+    # 구버전 calendar_ui.py 호환(키워드 인자 미지원)
+    render_month_calendar(events, y, m, title="📅 일정 달력")
+
 
 st.divider()
 
