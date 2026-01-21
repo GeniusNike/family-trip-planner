@@ -218,7 +218,21 @@ if view_mode == "표":
                 "Memo": (it.get("memo") or ""),
                 "Map": (it.get("map_url") or ""),
             })
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    # ✅ st.dataframe은 URL 클릭이 잘 안 되는 경우가 많아서, data_editor + LinkColumn으로 표시
+    st.data_editor(
+        rows,
+        use_container_width=True,
+        hide_index=True,
+        disabled=True,
+        column_config={
+            "Map": st.column_config.LinkColumn(
+                "Google Map",
+                help="클릭하면 구글맵으로 열립니다.",
+                display_text="열기",
+            )
+        },
+    )
     st.caption("표 보기에서는 수정/삭제는 카드 보기에서 해줘.")
     st.stop()
 
@@ -227,8 +241,8 @@ if view_mode == "타임라인":
     for d in dates_sorted:
         day_items = grouped[d]
         st.markdown(f"<div id='day-anchor-{d}'></div>", unsafe_allow_html=True)
-        st.markdown(f"<div id='day-anchor-{d}'></div>", unsafe_allow_html=True)
-    st.subheader(f"Day {day_map[d]} · 📅 {d}")
+        st.subheader(f"Day {day_map[d]} · 📅 {d}")
+
         route_url = _day_route_url(day_items)
         if route_url:
             st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
@@ -248,6 +262,7 @@ if view_mode == "타임라인":
             memo = (it.get("memo") or "").strip()
             if memo:
                 st.write(memo)
+
         st.divider()
     st.stop()
 
@@ -255,7 +270,7 @@ if view_mode == "타임라인":
 for d in dates_sorted:
     day_items = grouped[d]
     st.markdown(f"<div id='day-anchor-{d}'></div>", unsafe_allow_html=True)
-        st.subheader(f"Day {day_map[d]} · 📅 {d}")
+    st.subheader(f"Day {day_map[d]} · 📅 {d}")
     route_url = _day_route_url(day_items)
     if route_url:
         st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
