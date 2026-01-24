@@ -424,7 +424,7 @@ for d in dates_sorted:
     grouped[d] = sorted(grouped[d], key=_sort_key)
 
 if view_mode == "표":
-    # 표 보기: 날짜+요일, 운전거리(도로) 계산(OSRM 기반, best-effort)
+    # 표 보기: 날짜+요일, 운전거리(도로) + 행별 수정 버튼
     from map_utils import collect_day_points  # local import to avoid circular
 
     rows = []
@@ -451,30 +451,45 @@ if view_mode == "표":
                 prev_coord = coord
 
             rows.append({
+                "_id": it.get("id"),
                 "Day": f"Day {day_map[d]}",
                 "Date": format_date_with_dow_kr(d),
                 "Time": (it.get("time") or ""),
                 "Title": title,
-                "Memo": (it.get("memo") or ""),
                 "Drive(km)": ("" if km_from_prev is None else round(float(km_from_prev), 1)),
                 "Map": (it.get("map_url") or ""),
             })
 
-    st.data_editor(
-        rows,
-        use_container_width=True,
-        hide_index=True,
-        disabled=True,
-        column_config={
-            "Map": st.column_config.LinkColumn(
-                "Google Map",
-                help="클릭하면 구글맵으로 열립니다.",
-                display_text="열기",
-            )
-        },
-    )
+    # 버튼이 들어가는 '표'는 data_editor 대신 컬럼 레이아웃으로 렌더링
+    header_cols = st.columns([1.2, 1.8, 1.1, 4.0, 1.4, 1.2, 1.0], gap="small")
+    header_cols[0].markdown("**Day**")
+    header_cols[1].markdown("**Date**")
+    header_cols[2].markdown("**Time**")
+    header_cols[3].markdown("**Title**")
+    header_cols[4].markdown("**Drive(km)**")
+    header_cols[5].markdown("**Map**")
+    header_cols[6].markdown("**Edit**")
+
+    for r in rows:
+        c = st.columns([1.2, 1.8, 1.1, 4.0, 1.4, 1.2, 1.0], gap="small")
+        c[0].write(r["Day"])
+        c[1].write(r["Date"])
+        c[2].write(r["Time"])
+        c[3].write(r["Title"])
+        c[4].write(r["Drive(km)"])
+
+        map_url = r["Map"]
+        if map_url:
+            c[5].link_button("열기", map_url, use_container_width=True)
+        else:
+            c[5].write("")
+
+        if c[6].button("✏️", key=f"tbl_edit_{r.get('_id','')}", use_container_width=True):
+            st.session_state["inline_edit_id"] = r.get("_id")
+            st.session_state["inline_edit_trip"] = trip_name
+            st.rerun()
+
     st.caption("Drive(km)는 도로 경로 기준(OSRM)이며, 좌표를 못 읽는 링크에서는 빈칸일 수 있어요.")
-    st.caption("표 보기에서는 수정/삭제는 카드 보기에서 해줘.")
     st.stop()
 
 if view_mode == "타임라인":
