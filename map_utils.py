@@ -4,6 +4,25 @@ from urllib.parse import urlparse, parse_qs, unquote
 import streamlit as st
 
 try:
+    import requests  # type: ignore
+except Exception:
+    requests = None
+
+
+@st.cache_data(show_spinner=False)
+def _resolve_short_url(url: str) -> str:
+    """
+    Resolve maps.app.goo.gl / goo.gl/maps short links to the final expanded URL.
+    """
+    if not url or not requests:
+        return url
+    try:
+        resp = requests.get(url, allow_redirects=True, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        return resp.url or url
+    except Exception:
+        return url
+
+try:
     from geopy.geocoders import Nominatim  # type: ignore
 except Exception:
     Nominatim = None
@@ -36,6 +55,15 @@ def extract_latlng_from_google_maps_url(url: str):
     if not url:
         return None
     u = url.strip()
+
+    # Resolve Google short links (maps.app.goo.gl / goo.gl) to expanded URL
+    try:
+        parsed0 = urlparse(u)
+        host0 = (parsed0.netloc or '').lower()
+        if host0.endswith('maps.app.goo.gl') or host0.endswith('goo.gl'):
+            u = _resolve_short_url(u)
+    except Exception:
+        pass
 
     m = re.search(r"@(-?\d+\.\d+),\s*(-?\d+\.\d+)", u)
     if m:
