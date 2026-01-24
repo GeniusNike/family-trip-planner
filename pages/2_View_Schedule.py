@@ -424,17 +424,17 @@ for d in dates_sorted:
     grouped[d] = sorted(grouped[d], key=_sort_key)
 
 if view_mode == "표":
-    import pandas as pd
+    # 표 보기(모바일 가로 스크롤): 링크는 "열기/수정"만 표시되게 (LinkColumn)
+    from urllib.parse import quote_plus
 
     rows = []
     for d in dates_sorted:
         day_items = grouped[d]
         prev_coord = None
 
-        # 좌표 캐시
         from map_utils import collect_day_points
         pts = collect_day_points(day_items)
-        title_to_coord = {title:(lat,lng) for lat,lng,title in pts if title}
+        title_to_coord = {title: (lat, lng) for lat, lng, title in pts if title}
 
         for it in day_items:
             title = (it.get("title") or "").strip()
@@ -446,31 +446,68 @@ if view_mode == "표":
             if coord:
                 prev_coord = coord
 
-            edit_link = f"[수정](?edit_id={it.get('id')})"
+            map_url = (it.get("map_url") or "").strip()
+            item_id = it.get("id") or ""
+
+            # Edit 링크: 클릭 시 query param으로 edit_id + trip를 넘겨 Add Schedule 수정모드로 이동
+            edit_url = f"?trip={quote_plus(trip_name)}&edit_id={quote_plus(item_id)}"
 
             rows.append({
                 "Day": f"Day {day_map[d]}",
                 "Date": format_date_with_dow_kr(d),
                 "Time": it.get("time") or "",
                 "Title": title,
-                "Drive(km)": "" if km_from_prev is None else round(float(km_from_prev),1),
-                "Map": f"[열기]({it.get('map_url')})" if it.get("map_url") else "",
-                "Edit": edit_link
+                "Drive(km)": "" if km_from_prev is None else round(float(km_from_prev), 1),
+                "Map": map_url,
+                "Edit": edit_url,
             })
 
-    df = pd.DataFrame(rows)
     st.markdown("📊 **일정 표 보기 (좌우 스크롤 가능)**")
-    st.dataframe(
-        df,
+
+    st.data_editor(
+        rows,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        disabled=True,
+        column_config={
+            "Map": st.column_config.LinkColumn(
+                "Map",
+                help="클릭하면 구글맵으로 열립니다.",
+                display_text="열기",
+            ),
+            "Edit": st.column_config.LinkColumn(
+                "Edit",
+                help="클릭하면 수정 화면으로 이동합니다.",
+                display_text="수정",
+            ),
+        },
     )
 
-    # edit_id query param 처리
+    # query params로 수정 진입
     qp = st.query_params
-    if qp.get("edit_id"):
-        st.session_state["edit_id"] = qp.get("edit_id")
-        st.session_state["edit_trip_name"] = trip_name
+    edit_id = qp.get("edit_id")
+    qp_trip = qp.get("trip")
+    if edit_id:
+        # query_params는 버전에 따라 list일 수 있어 방어
+        if isinstance(edit_id, list):
+            edit_id = edit_id[0] if edit_id else None
+        if isinstance(qp_trip, list):
+            qp_trip = qp_trip[0] if qp_trip else None
+
+        if qp_trip:
+            st.session_state["add_trip_select"] = qp_trip
+            st.session_state["edit_trip_name"] = qp_trip
+        else:
+            st.session_state["edit_trip_name"] = trip_name
+
+        st.session_state["edit_id"] = edit_id
+
+        # query param 제거(반복 실행 방지)
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+
         st.switch_page("pages/1_Add_Schedule.py")
 
     st.stop()
