@@ -170,3 +170,23 @@ def render_day_map(day_items: list[dict], height: int = 520):
         m.fit_bounds(bounds, padding=(30, 30))
 
     st_folium(m, width=None, height=height)
+
+
+@st.cache_data(show_spinner=False)
+def get_coord_from_map_url(map_url: str):
+    """
+    Returns (lat,lng) if 가능한 경우.
+    - short link resolve (maps.app.goo.gl) handled inside extract_latlng_from_google_maps_url via _resolve_short_url
+    - address geocoding via Nominatim (best-effort)
+    """
+    if not map_url:
+        return None
+    info = extract_latlng_from_google_maps_url(map_url)
+    if not info:
+        return None
+    kind, val = info
+    if kind == "latlng":
+        return val
+    if kind == "addr":
+        return _geocode_address(val)
+    return None
