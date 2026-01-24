@@ -424,21 +424,18 @@ for d in dates_sorted:
     grouped[d] = sorted(grouped[d], key=_sort_key)
 
 if view_mode == "표":
-    # 표 보기: 날짜+요일, 운전거리(도로) + 행별 수정 버튼
-    from map_utils import collect_day_points  # local import to avoid circular
+    import pandas as pd
 
     rows = []
     for d in dates_sorted:
         day_items = grouped[d]
-
-        # 일정 순서(시간)대로 좌표 매칭 (제목 -> 좌표)
-        pts = collect_day_points(day_items)  # list[(lat,lng,title)]
-        title_to_coord = {}
-        for lat, lng, title in pts:
-            if title and title not in title_to_coord:
-                title_to_coord[title] = (lat, lng)
-
         prev_coord = None
+
+        # 좌표 캐시
+        from map_utils import collect_day_points
+        pts = collect_day_points(day_items)
+        title_to_coord = {title:(lat,lng) for lat,lng,title in pts if title}
+
         for it in day_items:
             title = (it.get("title") or "").strip()
             coord = title_to_coord.get(title)
@@ -446,50 +443,36 @@ if view_mode == "표":
             km_from_prev = None
             if prev_coord and coord:
                 km_from_prev = driving_km_between(prev_coord, coord)
-
             if coord:
                 prev_coord = coord
 
+            edit_link = f"[수정](?edit_id={it.get('id')})"
+
             rows.append({
-                "_id": it.get("id"),
                 "Day": f"Day {day_map[d]}",
                 "Date": format_date_with_dow_kr(d),
-                "Time": (it.get("time") or ""),
+                "Time": it.get("time") or "",
                 "Title": title,
-                "Drive(km)": ("" if km_from_prev is None else round(float(km_from_prev), 1)),
-                "Map": (it.get("map_url") or ""),
+                "Drive(km)": "" if km_from_prev is None else round(float(km_from_prev),1),
+                "Map": f"[열기]({it.get('map_url')})" if it.get("map_url") else "",
+                "Edit": edit_link
             })
 
-    # 버튼이 들어가는 '표'는 data_editor 대신 컬럼 레이아웃으로 렌더링
-    header_cols = st.columns([1.2, 1.8, 1.1, 4.0, 1.4, 1.2, 1.0], gap="small")
-    header_cols[0].markdown("**Day**")
-    header_cols[1].markdown("**Date**")
-    header_cols[2].markdown("**Time**")
-    header_cols[3].markdown("**Title**")
-    header_cols[4].markdown("**Drive(km)**")
-    header_cols[5].markdown("**Map**")
-    header_cols[6].markdown("**Edit**")
+    df = pd.DataFrame(rows)
+    st.markdown("📊 **일정 표 보기 (좌우 스크롤 가능)**")
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
 
-    for r in rows:
-        c = st.columns([1.2, 1.8, 1.1, 4.0, 1.4, 1.2, 1.0], gap="small")
-        c[0].write(r["Day"])
-        c[1].write(r["Date"])
-        c[2].write(r["Time"])
-        c[3].write(r["Title"])
-        c[4].write(r["Drive(km)"])
+    # edit_id query param 처리
+    qp = st.query_params
+    if qp.get("edit_id"):
+        st.session_state["edit_id"] = qp.get("edit_id")
+        st.session_state["edit_trip_name"] = trip_name
+        st.switch_page("pages/1_Add_Schedule.py")
 
-        map_url = r["Map"]
-        if map_url:
-            c[5].link_button("열기", map_url, use_container_width=True)
-        else:
-            c[5].write("")
-
-        if c[6].button("✏️", key=f"tbl_edit_{r.get('_id','')}", use_container_width=True):
-            st.session_state["inline_edit_id"] = r.get("_id")
-            st.session_state["inline_edit_trip"] = trip_name
-            st.rerun()
-
-    st.caption("Drive(km)는 도로 경로 기준(OSRM)이며, 좌표를 못 읽는 링크에서는 빈칸일 수 있어요.")
     st.stop()
 
 if view_mode == "타임라인":
