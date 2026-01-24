@@ -423,7 +423,7 @@ for d in dates_sorted:
     grouped[d] = sorted(grouped[d], key=_sort_key)
 
 if view_mode == "표":
-    # 표 보기(모바일 가로 스크롤): 링크는 "열기/수정"만 표시되게 (LinkColumn)
+    # 표 보기(모바일 가로 스크롤): Map은 '열기' 링크, 수정은 '선택 후 버튼' 방식(가장 안정적)
     from urllib.parse import quote_plus
 
     rows = []
@@ -448,66 +448,53 @@ if view_mode == "표":
             map_url = (it.get("map_url") or "").strip()
             item_id = it.get("id") or ""
 
-            # Edit 링크: 클릭 시 query param으로 edit_id + trip를 넘겨 Add Schedule 수정모드로 이동
-            edit_url = f"./1_Add_Schedule?trip={quote_plus(trip_name)}&edit_id={quote_plus(item_id)}"
-
             rows.append({
+                "선택": False,
+                "_id": item_id,
                 "Day": f"Day {day_map[d]}",
                 "Date": format_date_with_dow_kr(d),
                 "Time": it.get("time") or "",
                 "Title": title,
                 "Drive(km)": "" if km_from_prev is None else round(float(km_from_prev), 1),
                 "Map": map_url,
-                "Edit": edit_url,
             })
 
     st.markdown("📊 **일정 표 보기 (좌우 스크롤 가능)**")
+    st.caption("수정: 표에서 한 행을 선택(체크)한 뒤, 아래 '선택한 일정 수정' 버튼을 누르세요.")
 
-    st.data_editor(
+    edited = st.data_editor(
         rows,
         use_container_width=True,
         hide_index=True,
-        disabled=True,
+        key=f"table_editor_{trip_name}",
         column_config={
-            "Map": st.column_config.LinkColumn(
-                "Map",
-                help="클릭하면 구글맵으로 열립니다.",
-                display_text="열기",
-            ),
-            "Edit": st.column_config.LinkColumn(
-                "Edit",
-                help="클릭하면 수정 화면으로 이동합니다.",
-                display_text="수정",
-            ),
+            "_id": st.column_config.TextColumn("_id", disabled=True, help="내부용", width="small"),
+            "선택": st.column_config.CheckboxColumn("선택", help="수정할 일정을 체크"),
+            "Map": st.column_config.LinkColumn("Map", display_text="열기"),
         },
+        disabled=["_id", "Day", "Date", "Time", "Title", "Drive(km)", "Map"],
     )
 
-    # query params로 수정 진입
-    qp = st.query_params
-    edit_id = qp.get("edit_id")
-    qp_trip = qp.get("trip")
-    if edit_id:
-        # query_params는 버전에 따라 list일 수 있어 방어
-        if isinstance(edit_id, list):
-            edit_id = edit_id[0] if edit_id else None
-        if isinstance(qp_trip, list):
-            qp_trip = qp_trip[0] if qp_trip else None
+    # 화면에는 _id를 숨기고 싶지만, data_editor에서 숨김 옵션이 제한적이라 폭을 최소화함.
+    # 선택된 행 찾기
+    selected = None
+    if isinstance(edited, list):
+        for r in edited:
+            if r.get("선택"):
+                selected = r
+                break
 
-        if qp_trip:
-            st.session_state["add_trip_select"] = qp_trip
-            st.session_state["edit_trip_name"] = qp_trip
-        else:
-            st.session_state["edit_trip_name"] = trip_name
-
-        st.session_state["edit_id"] = edit_id
-
-        # query param 제거(반복 실행 방지)
-        try:
-            st.query_params.clear()
-        except Exception:
-            pass
-
+    btn_cols = st.columns([1, 1, 6], gap="small")
+    if btn_cols[0].button("✏️ 선택한 일정 수정", type="primary", use_container_width=True, disabled=not bool(selected)):
+        st.session_state["edit_trip_name"] = trip_name
+        st.session_state["add_trip_select"] = trip_name
+        st.session_state["edit_id"] = selected.get("_id")
         st.switch_page("pages/1_Add_Schedule.py")
+
+    if btn_cols[1].button("✅ 선택 해제", use_container_width=True):
+        # 체크 해제 위해 editor key reset
+        st.session_state.pop(f"table_editor_{trip_name}", None)
+        st.rerun()
 
     st.stop()
 
