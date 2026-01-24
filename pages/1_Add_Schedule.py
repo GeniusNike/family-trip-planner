@@ -65,10 +65,10 @@ if "add_cal_ym" not in st.session_state:
 
 with st.sidebar:
     st.subheader("여행 선택/생성")
-    if st.button("🔄 새로고침", use_container_width=True):
+    if st.button("🔄 새로고침", width='stretch'):
         st.rerun()
     new_trip = st.text_input("새 여행 이름", placeholder="예: 2026 오사카")
-    if st.button("➕ 여행 만들기", use_container_width=True, disabled=not new_trip.strip()):
+    if st.button("➕ 여행 만들기", width='stretch', disabled=not new_trip.strip()):
         db["trips"].append({"name": new_trip.strip(), "items": []})
         save_db(ROOT_FOLDER_ID, db)
         st.success("여행 생성 완료")
@@ -116,7 +116,7 @@ for it in items:
 y, m = st.session_state["add_cal_ym"]
 c1, c2, c3 = st.columns([1, 2, 1])
 with c1:
-    if st.button("◀ 이전달", use_container_width=True):
+    if st.button("◀ 이전달", width='stretch'):
         if m == 1:
             y, m = y - 1, 12
         else:
@@ -126,7 +126,7 @@ with c1:
 with c2:
     st.markdown(f"### {y}년 {m}월")
 with c3:
-    if st.button("다음달 ▶", use_container_width=True):
+    if st.button("다음달 ▶", width='stretch'):
         if m == 12:
             y, m = y + 1, 1
         else:
@@ -182,10 +182,10 @@ if edit_item and existing_ids:
     st.caption("기존 사진(삭제할 사진을 체크)")
     cols_prev = st.columns(3)
     for i, fid in enumerate(existing_ids):
-        b = drive_store.get_image_bytes(fid) if service_preview else None
+        b = drive_store.get_image_bytes(fid)
         col = cols_prev[i % 3]
         if b:
-            col.image(b, use_container_width=True)
+            col.image(b, width='stretch')
         if col.checkbox("삭제", key=f"del_img_{fid}"):
             delete_ids.add(fid)
     st.divider()
@@ -232,8 +232,8 @@ if st.session_state["draft_images"]:
     st.caption(f"현재 추가된 이미지: {len(st.session_state['draft_images'])}장")
     cols = st.columns(3)
     for i, (b, _) in enumerate(st.session_state["draft_images"][:9]):
-        cols[i % 3].image(b, use_container_width=True)
-    if st.button("🧹 이미지 선택 전부 비우기", use_container_width=True):
+        cols[i % 3].image(b, width='stretch')
+    if st.button("🧹 이미지 선택 전부 비우기", width='stretch'):
         st.session_state["draft_images"] = []
         st.session_state["last_paste_sig"] = None
         st.rerun()
@@ -248,7 +248,7 @@ can_save = bool(title.strip())
 btn1, btn2 = st.columns([1, 1], gap="small")
 
 if edit_item:
-    if btn1.button("💾 수정 저장", type="primary", use_container_width=True, disabled=not can_save):
+    if btn1.button("💾 수정 저장", type="primary", width='stretch', disabled=not can_save):
         service = drive_store._drive_service()
         images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
 
@@ -292,7 +292,7 @@ if edit_item:
         except Exception:
             st.info("왼쪽 메뉴에서 '일정 보기'로 이동해줘.")
 
-    if btn2.button("➕ 추가 모드", use_container_width=True):
+    if btn2.button("➕ 추가 모드", width='stretch'):
         st.session_state.pop("edit_id", None)
         st.session_state.pop("edit_trip_name", None)
         st.session_state["draft_images"] = []
@@ -300,7 +300,7 @@ if edit_item:
         st.rerun()
 
 else:
-    if btn1.button("✅ 저장", type="primary", use_container_width=True, disabled=not can_save):
+    if btn1.button("✅ 저장", type="primary", width='stretch', disabled=not can_save):
         service = drive_store._drive_service()
         images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
 
@@ -342,7 +342,7 @@ else:
         except Exception:
             st.info("왼쪽 메뉴에서 '일정 보기'로 이동해줘.")
 
-    if btn2.button("📅 일정 보기", use_container_width=True):
+    if btn2.button("📅 일정 보기", width='stretch'):
         try:
             st.switch_page("pages/2_View_Schedule.py")
         except Exception:

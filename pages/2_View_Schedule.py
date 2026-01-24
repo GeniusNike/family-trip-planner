@@ -105,7 +105,7 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
                 b = drive_store.get_image_bytes(fid)
                 col = cols_prev[i % 3]
                 if b:
-                    col.image(b, use_container_width=True)
+                    col.image(b, width='stretch')
                 if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
                     delete_ids.add(fid)
 
@@ -151,15 +151,15 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
             st.caption(f"추가될 이미지: {len(drafts)}장")
             cols = st.columns(3)
             for i, (b, _) in enumerate(drafts[:9]):
-                cols[i % 3].image(b, use_container_width=True)
-            if st.button("🧹 추가 이미지 비우기", use_container_width=True, key=key_prefix + "clear_drafts"):
+                cols[i % 3].image(b, width='stretch')
+            if st.button("🧹 추가 이미지 비우기", width='stretch', key=key_prefix + "clear_drafts"):
                 st.session_state[key_prefix + "draft_images"] = []
                 st.session_state[key_prefix + "last_paste_sig"] = None
                 st.rerun()
 
         st.divider()
         b1, b2 = st.columns([1, 1], gap="small")
-        if b1.button("💾 수정 저장", type="primary", use_container_width=True, key=key_prefix + "save_btn", disabled=not bool(new_title.strip())):
+        if b1.button("💾 수정 저장", type="primary", width='stretch', key=key_prefix + "save_btn", disabled=not bool(new_title.strip())):
             date_str = new_date.strftime("%Y-%m-%d")
             map_text, map_url = _make_map_url(new_map_text)
 
@@ -209,7 +209,7 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
             st.success("수정 완료! 화면을 새로고침합니다.")
             st.rerun()
 
-        if b2.button("닫기", use_container_width=True, key=key_prefix + "close_btn"):
+        if b2.button("닫기", width='stretch', key=key_prefix + "close_btn"):
             st.session_state.pop("inline_edit_id", None)
             st.session_state.pop("inline_edit_trip", None)
             st.rerun()
@@ -325,7 +325,7 @@ for d in dates_sorted:
 y, m = st.session_state["view_cal_ym"]
 c1, c2, c3 = st.columns([1, 2, 1])
 with c1:
-    if st.button("◀ 이전달", key="view_prev", use_container_width=True):
+    if st.button("◀ 이전달", key="view_prev", width='stretch'):
         if m == 1:
             y, m = y - 1, 12
         else:
@@ -335,7 +335,7 @@ with c1:
 with c2:
     st.markdown(f"### {y}년 {m}월")
 with c3:
-    if st.button("다음달 ▶", key="view_next", use_container_width=True):
+    if st.button("다음달 ▶", key="view_next", width='stretch'):
         if m == 12:
             y, m = y + 1, 1
         else:
@@ -464,7 +464,7 @@ if view_mode == "표":
 
     edited = st.data_editor(
         rows,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         key=f"table_editor_{trip_name}",
         column_config={
@@ -485,13 +485,13 @@ if view_mode == "표":
                 break
 
     btn_cols = st.columns([1, 1, 6], gap="small")
-    if btn_cols[0].button("✏️ 선택한 일정 수정", type="primary", use_container_width=True, disabled=not bool(selected)):
+    if btn_cols[0].button("✏️ 선택한 일정 수정", type="primary", width='stretch', disabled=not bool(selected)):
         st.session_state["edit_trip_name"] = trip_name
         st.session_state["add_trip_select"] = trip_name
         st.session_state["edit_id"] = selected.get("_id")
         st.switch_page("pages/1_Add_Schedule.py")
 
-    if btn_cols[1].button("✅ 선택 해제", use_container_width=True):
+    if btn_cols[1].button("✅ 선택 해제", width='stretch'):
         # 체크 해제 위해 editor key reset
         st.session_state.pop(f"table_editor_{trip_name}", None)
         st.rerun()
@@ -587,15 +587,15 @@ for d in dates_sorted:
                             imgs.append(b)
                     if imgs:
                         st.caption("📷 사진")
-                        st.image(imgs, use_container_width=True)
+                        st.image(imgs, width='stretch')
             # actions (edit/delete) - keep existing helper function if present
             cols = st.columns([1, 1, 6])
-            if cols[0].button("✏️ 수정", key=f"edit_{it.get('id','')}", use_container_width=True):
+            if cols[0].button("✏️ 수정", key=f"edit_{it.get('id','')}", width='stretch'):
                 st.session_state["edit_id"] = it.get("id")
                 st.session_state["edit_trip_name"] = trip_name
                 st.session_state["add_trip_select"] = trip_name
                 st.switch_page("pages/1_Add_Schedule.py")
-            if cols[1].button("🗑️ 삭제", key=f"del_{it.get('id','')}", use_container_width=True):
+            if cols[1].button("🗑️ 삭제", key=f"del_{it.get('id','')}", width='stretch'):
                 st.session_state["delete_id"] = it.get("id")
                 st.rerun()
 
