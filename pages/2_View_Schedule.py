@@ -346,11 +346,17 @@ for d in dates_sorted:
                 st.write(memo)
 
             # photos
-            photos = it.get("photos") or []
-            if photos:
-                st.caption("📷 사진")
-                st.image(photos, use_container_width=True)
-
+            if show_images:
+                image_ids = it.get("image_file_ids") or []
+                if image_ids:
+                    imgs = []
+                    for fid in image_ids:
+                        b = get_image_bytes(fid)
+                        if b:
+                            imgs.append(b)
+                    if imgs:
+                        st.caption("📷 사진")
+                        st.image(imgs, use_container_width=True)
             # actions (edit/delete) - keep existing helper function if present
             cols = st.columns([1, 1, 6])
             if cols[0].button("✏️ 수정", key=f"edit_{it.get('id','')}", use_container_width=True):
