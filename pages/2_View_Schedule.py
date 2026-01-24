@@ -100,10 +100,9 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
         delete_ids = set()
         if existing_ids:
             st.caption("기존 사진(삭제할 사진 체크)")
-            service_preview = drive_store._drive_service()
             cols_prev = st.columns(3)
             for i, fid in enumerate(existing_ids):
-                b = drive_store.get_image_bytes(service_preview, fid)
+                b = drive_store.get_image_bytes(fid)
                 col = cols_prev[i % 3]
                 if b:
                     col.image(b, use_container_width=True)

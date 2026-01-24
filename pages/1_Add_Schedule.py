@@ -153,13 +153,9 @@ existing_ids = (edit_item.get("image_file_ids") if edit_item else []) or []
 delete_ids = set()
 if edit_item and existing_ids:
     st.caption("기존 사진(삭제할 사진을 체크)")
-    service_preview = drive_store._drive_service()
-    if not service_preview:
-        st.warning('구글 드라이브 연결을 초기화하지 못했어요. (Secrets/OAuth 설정을 확인해주세요)')
-        service_preview = None
     cols_prev = st.columns(3)
     for i, fid in enumerate(existing_ids):
-        b = drive_store.get_image_bytes(service_preview, fid) if service_preview else None
+        b = drive_store.get_image_bytes(fid) if service_preview else None
         col = cols_prev[i % 3]
         if b:
             col.image(b, use_container_width=True)
