@@ -12,6 +12,7 @@ from streamlit_paste_button import paste_image_button
 import drive_store
 from drive_store import load_db, save_db, list_trip_names, get_trip, get_image_bytes
 from calendar_ui import render_month_calendar
+from map_utils import render_day_map
 
 st.set_page_config(page_title="일정 보기", page_icon="👀", layout="wide")
 
@@ -254,6 +255,9 @@ if view_mode == "타임라인":
         else:
             st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
 
+        with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
+            render_day_map(day_items, height=560)
+
         for idx2, it in enumerate(day_items, start=1):
             t = (it.get("time") or "").strip()
             title = (it.get("title") or "").strip()
@@ -279,9 +283,14 @@ for d in dates_sorted:
     route_url = _day_route_url(day_items)
     if route_url:
         st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
+
+        with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
+            render_day_map(day_items, height=560)
         st.caption("구글맵에서 경유지가 입력된 순서(시간순)대로 잡혀요.")
     else:
         st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
+        with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
+            render_day_map(day_items, height=560)
 
     for it in day_items:
         item_id = it.get("id")
