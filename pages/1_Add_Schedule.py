@@ -13,6 +13,33 @@ import drive_store
 from drive_store import load_db, save_db, get_trip, list_trip_names
 from calendar_ui import render_month_calendar
 
+
+# (표보기 링크 등) query params로 수정 모드 진입 지원
+try:
+    qp = st.query_params
+except Exception:
+    qp = {}
+
+_qp_trip = qp.get("trip") if qp else None
+_qp_edit = qp.get("edit_id") if qp else None
+if isinstance(_qp_trip, list):
+    _qp_trip = _qp_trip[0] if _qp_trip else None
+if isinstance(_qp_edit, list):
+    _qp_edit = _qp_edit[0] if _qp_edit else None
+
+if _qp_trip:
+    st.session_state["add_trip_select"] = _qp_trip
+    st.session_state["edit_trip_name"] = _qp_trip
+if _qp_edit:
+    st.session_state["edit_id"] = _qp_edit
+
+# 반복 실행 방지용으로 query params 제거
+if _qp_trip or _qp_edit:
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
 st.set_page_config(page_title="일정 추가", page_icon="📝", layout="centered")
 
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
@@ -155,10 +182,7 @@ if edit_item and existing_ids:
     st.caption("기존 사진(삭제할 사진을 체크)")
     cols_prev = st.columns(3)
     for i, fid in enumerate(existing_ids):
-        try:
-            b = drive_store.get_image_bytes(fid)
-        except Exception:
-            b = None
+        b = drive_store.get_image_bytes(fid) if service_preview else None
         col = cols_prev[i % 3]
         if b:
             col.image(b, use_container_width=True)

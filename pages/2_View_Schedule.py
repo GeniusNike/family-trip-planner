@@ -449,7 +449,7 @@ if view_mode == "표":
             item_id = it.get("id") or ""
 
             # Edit 링크: 클릭 시 query param으로 edit_id + trip를 넘겨 Add Schedule 수정모드로 이동
-            edit_url = f"?trip={quote_plus(trip_name)}&edit_id={quote_plus(item_id)}"
+            edit_url = f"./1_Add_Schedule?trip={quote_plus(trip_name)}&edit_id={quote_plus(item_id)}"
 
             rows.append({
                 "Day": f"Day {day_map[d]}",
