@@ -6,6 +6,19 @@ from datetime import date
 from urllib.parse import quote_plus, urlparse, parse_qs, unquote_plus
 
 import streamlit as st
+
+# === INLINE EDIT (View Schedule에서 바로 수정) ===
+import io
+import time
+import uuid
+import hashlib
+from urllib.parse import quote_plus
+
+from PIL import Image
+from streamlit_paste_button import paste_image_button
+
+import drive_store
+from drive_store import save_db
 from PIL import Image
 from streamlit_paste_button import paste_image_button
 
@@ -18,6 +31,191 @@ from routing_utils import format_date_with_dow_kr, driving_km_between, compute_d
 st.set_page_config(page_title="일정 보기", page_icon="👀", layout="wide")
 
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
+
+def _find_item_by_id(db: dict, trip_name: str, item_id: str):
+    trip = None
+    for t in (db.get("trips") or []):
+        if t.get("name") == trip_name:
+            trip = t
+            break
+    if not trip:
+        return None, None
+    for it in (trip.get("items") or []):
+        if it.get("id") == item_id:
+            return trip, it
+    return trip, None
+
+
+def _make_map_url(map_text: str) -> tuple[str, str]:
+    map_text = (map_text or "").strip()
+    if not map_text:
+        return "", ""
+    if map_text.lower().startswith("http"):
+        return map_text, map_text
+    return map_text, "https://www.google.com/maps/search/?api=1&query=" + quote_plus(map_text)
+
+
+def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
+    """
+    수정 다이얼로그: View Schedule 안에서 바로 수정/저장.
+    """
+    item_id = item.get("id") or ""
+    key_prefix = f"inline_edit_{trip_name}_{item_id}_"
+
+    @st.dialog("✏️ 일정 수정", width="large")
+    def _dlg():
+        st.caption("이 창에서 바로 수정하고 저장할 수 있어요.")
+
+        # 초기값 세팅(1회)
+        init_flag = key_prefix + "init"
+        if not st.session_state.get(init_flag):
+            st.session_state[key_prefix + "date"] = item.get("date") or ""
+            st.session_state[key_prefix + "time"] = item.get("time") or ""
+            st.session_state[key_prefix + "title"] = item.get("title") or ""
+            st.session_state[key_prefix + "memo"] = item.get("memo") or ""
+            st.session_state[key_prefix + "map_text"] = item.get("map_text") or (item.get("map_url") or "")
+            st.session_state[key_prefix + "draft_images"] = []
+            st.session_state[key_prefix + "last_paste_sig"] = None
+            st.session_state[init_flag] = True
+
+        # date input
+        from datetime import datetime as _dt
+        try:
+            d0 = _dt.strptime(st.session_state[key_prefix + "date"], "%Y-%m-%d").date()
+        except Exception:
+            d0 = _dt.now().date()
+
+        c1, c2 = st.columns([1, 1], gap="small")
+        new_date = c1.date_input("날짜", value=d0, key=key_prefix + "date_input")
+        new_time = c2.text_input("시간", value=st.session_state[key_prefix + "time"], placeholder="예: 09:30", key=key_prefix + "time_input")
+
+        new_title = st.text_input("제목", value=st.session_state[key_prefix + "title"], key=key_prefix + "title_input")
+        new_memo = st.text_area("메모", value=st.session_state[key_prefix + "memo"], height=120, key=key_prefix + "memo_input")
+        new_map_text = st.text_input("장소/지도 링크", value=st.session_state[key_prefix + "map_text"], placeholder="maps 링크 또는 주소", key=key_prefix + "map_input")
+
+        st.divider()
+        st.subheader("사진(삭제/추가)")
+
+        existing_ids = (item.get("image_file_ids") or [])[:]
+        delete_ids = set()
+        if existing_ids:
+            st.caption("기존 사진(삭제할 사진 체크)")
+            service_preview = drive_store._drive_service()
+            cols_prev = st.columns(3)
+            for i, fid in enumerate(existing_ids):
+                b = drive_store.get_image_bytes(service_preview, fid)
+                col = cols_prev[i % 3]
+                if b:
+                    col.image(b, use_container_width=True)
+                if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
+                    delete_ids.add(fid)
+
+        pasted_or_uploaded_now = False
+
+        paste_result = paste_image_button("📋 클립보드 이미지 붙여넣기(누적)", key=key_prefix + "paste_btn")
+        if paste_result is not None and getattr(paste_result, "image_data", None) is not None:
+            img = paste_result.image_data
+            raw = None
+            mime = "image/png"
+            if isinstance(img, Image.Image):
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                raw = buf.getvalue()
+            elif isinstance(img, (bytes, bytearray)):
+                raw = bytes(img)
+
+            if raw:
+                sig = hashlib.sha1(raw).hexdigest()
+                if sig != st.session_state[key_prefix + "last_paste_sig"]:
+                    st.session_state[key_prefix + "draft_images"].append((raw, mime))
+                    st.session_state[key_prefix + "last_paste_sig"] = sig
+                    pasted_or_uploaded_now = True
+                else:
+                    st.info("같은 이미지가 반복 감지되어 추가하지 않았어(중복 방지).")
+
+        uploaded_files = st.file_uploader(
+            "📷 사진 업로드(여러 장 가능)",
+            type=["png", "jpg", "jpeg", "webp"],
+            accept_multiple_files=True,
+            key=key_prefix + "uploader",
+        )
+        if uploaded_files:
+            for uf in uploaded_files:
+                st.session_state[key_prefix + "draft_images"].append((uf.getvalue(), uf.type or "image/png"))
+            pasted_or_uploaded_now = True
+
+        if pasted_or_uploaded_now:
+            st.rerun()
+
+        drafts = st.session_state.get(key_prefix + "draft_images") or []
+        if drafts:
+            st.caption(f"추가될 이미지: {len(drafts)}장")
+            cols = st.columns(3)
+            for i, (b, _) in enumerate(drafts[:9]):
+                cols[i % 3].image(b, use_container_width=True)
+            if st.button("🧹 추가 이미지 비우기", use_container_width=True, key=key_prefix + "clear_drafts"):
+                st.session_state[key_prefix + "draft_images"] = []
+                st.session_state[key_prefix + "last_paste_sig"] = None
+                st.rerun()
+
+        st.divider()
+        b1, b2 = st.columns([1, 1], gap="small")
+        if b1.button("💾 수정 저장", type="primary", use_container_width=True, key=key_prefix + "save_btn", disabled=not bool(new_title.strip())):
+            date_str = new_date.strftime("%Y-%m-%d")
+            map_text, map_url = _make_map_url(new_map_text)
+
+            service = drive_store._drive_service()
+            images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
+
+            kept_ids = [fid for fid in existing_ids if fid not in delete_ids]
+            new_ids = []
+            for (img_bytes, mime) in (st.session_state.get(key_prefix + "draft_images") or []):
+                ts = int(time.time() * 1000)
+                ext = "png" if (mime or "").lower().endswith("png") else "jpg"
+                safe_trip = trip_name.replace(" ", "_")
+                filename = f"{safe_trip}_{date_str}_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+                fid = drive_store.upload_image_bytes(service, images_folder_id, filename, img_bytes, mime or "image/png")
+                new_ids.append(fid)
+
+            item.update({
+                "date": date_str,
+                "time": (new_time or "").strip(),
+                "title": new_title.strip(),
+                "memo": (new_memo or "").strip(),
+                "map_text": map_text,
+                "map_url": map_url,
+                "image_file_ids": kept_ids + new_ids,
+                "ts": int(time.time()),
+            })
+
+            def _sort_key(x):
+                t = x.get("time") or ""
+                return (x.get("date") or "", t, x.get("ts") or 0)
+
+            # 재정렬 후 저장
+            trip, _ = _find_item_by_id(db, trip_name, item_id)
+            if trip:
+                trip["items"] = sorted(trip.get("items") or [], key=_sort_key)
+
+            save_db(ROOT_FOLDER_ID, db)
+
+            # 세션 정리
+            st.session_state.pop("inline_edit_id", None)
+            st.session_state.pop("inline_edit_trip", None)
+            for k in list(st.session_state.keys()):
+                if k.startswith(key_prefix):
+                    st.session_state.pop(k, None)
+            st.session_state.pop(init_flag, None)
+
+            st.success("수정 완료! 화면을 새로고침합니다.")
+            st.rerun()
+
+        if b2.button("닫기", use_container_width=True, key=key_prefix + "close_btn"):
+            st.session_state.pop("inline_edit_id", None)
+            st.session_state.pop("inline_edit_trip", None)
+            st.rerun()
+
+    _dlg()
 
 st.title("👀 일정 보기")
 
@@ -41,6 +239,18 @@ if qp_trip_val and qp_trip_val in trip_names:
     default_trip = qp_trip_val
 default_index = trip_names.index(default_trip) if default_trip else 0
 trip_name = st.selectbox("여행 선택", options=trip_names, index=default_index, key="view_trip_select")
+
+# (Inline edit) 수정 요청이 있으면 이 페이지에서 바로 다이얼로그로 열기
+if st.session_state.get("inline_edit_id") and st.session_state.get("inline_edit_trip"):
+    _tname = st.session_state["inline_edit_trip"]
+    _iid = st.session_state["inline_edit_id"]
+    _trip, _it = _find_item_by_id(db, _tname, _iid)
+    if _it:
+        _inline_edit_dialog(db, _tname, _it)
+    else:
+        st.warning("수정할 일정을 찾지 못했어. (여행/일정이 변경되었을 수 있어요)")
+        st.session_state.pop("inline_edit_id", None)
+        st.session_state.pop("inline_edit_trip", None)
 trip = get_trip(db, trip_name)
 if not trip:
     st.error("여행을 찾을 수 없어. 새로고침 후 다시 시도해줘.")
@@ -361,6 +571,8 @@ for d in dates_sorted:
             cols = st.columns([1, 1, 6])
             if cols[0].button("✏️ 수정", key=f"edit_{it.get('id','')}", use_container_width=True):
                 st.session_state["edit_id"] = it.get("id")
+                st.session_state["edit_trip_name"] = trip_name
+                st.session_state["add_trip_select"] = trip_name
                 st.switch_page("pages/1_Add_Schedule.py")
             if cols[1].button("🗑️ 삭제", key=f"del_{it.get('id','')}", use_container_width=True):
                 st.session_state["delete_id"] = it.get("id")

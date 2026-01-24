@@ -17,7 +17,7 @@ st.set_page_config(page_title="일정 추가", page_icon="📝", layout="centere
 
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
 
-st.title("📝 일정 추가")
+st.title("📝 일정 추가/수정")
 
 # v3.7: 달력 날짜 클릭 시 jump(YYYY-MM-DD)로 날짜 자동 선택
 jump_date_str = st.query_params.get("jump", "")
@@ -51,12 +51,34 @@ if not trip_names:
     st.info("왼쪽에서 여행을 먼저 만들어줘.")
     st.stop()
 
+
+# (수정 모드) View에서 넘어올 때 여행을 자동 선택
+_edit_trip = st.session_state.get("edit_trip_name")
+if _edit_trip and _edit_trip in trip_names:
+    st.session_state["add_trip_select"] = _edit_trip
+
 trip_name = st.selectbox("여행", options=trip_names, key="add_trip_select")
 trip = get_trip(db, trip_name)
 if not trip:
     st.error("여행을 찾을 수 없어. 새로고침 후 다시 시도해줘.")
     st.stop()
 
+
+# --- Edit mode (v3.12.2) ---
+edit_id = st.session_state.get("edit_id")
+edit_item = None
+if edit_id:
+    for _it in (trip.get("items", []) or []):
+        if _it.get("id") == edit_id:
+            edit_item = _it
+            break
+
+if edit_id and not edit_item:
+    st.warning("수정할 일정을 찾지 못했어. (이미 삭제되었을 수 있어) 추가 모드로 전환할게.")
+    st.session_state.pop("edit_id", None)
+    st.session_state.pop("edit_trip_name", None)
+    edit_id = None
+# ---------------------------
 items = trip.get("items", []) or []
 events = {}
 for it in items:
@@ -96,14 +118,25 @@ st.divider()
 
 colA, colB = st.columns([1, 1])
 with colA:
-    date_str = st.date_input("날짜", value=datetime.now().date()).strftime("%Y-%m-%d")
+    _default_date = datetime.now().date()
+    if edit_item and edit_item.get("date"):
+        try:
+            _default_date = datetime.strptime(edit_item["date"], "%Y-%m-%d").date()
+        except Exception:
+            pass
+    date_str = st.date_input("날짜", value=_default_date).strftime("%Y-%m-%d")
 with colB:
-    time_str = st.text_input("시간(선택)", placeholder="예: 14:30 / 오후 2시")
+    _default_time = (edit_item.get("time") if edit_item else "") or ""
+    time_str = st.text_input("시간(선택)", value=_default_time, placeholder="예: 14:30 / 오후 2시")
 
-title = st.text_input("제목", placeholder="예: 공항 이동 / 맛집 / 관광지")
-memo = st.text_area("메모", height=120, placeholder="메모(선택)")
+_default_title = (edit_item.get("title") if edit_item else "") or ""
+title = st.text_input("제목", value=_default_title, placeholder="예: 공항 이동 / 맛집 / 관광지")
 
-map_input = st.text_input("구글맵 링크 또는 주소(선택)", placeholder="예: https://maps.app.goo.gl/... 또는 서울역")
+_default_memo = (edit_item.get("memo") if edit_item else "") or ""
+memo = st.text_area("메모", value=_default_memo, height=120, placeholder="메모(선택)")
+
+_default_map = (edit_item.get("map_text") if edit_item else "") or (edit_item.get("map_url") if edit_item else "") or ""
+map_input = st.text_input("구글맵 링크 또는 주소(선택)", value=_default_map, placeholder="예: https://maps.app.goo.gl/... 또는 서울역")
 map_text = map_input.strip()
 map_url = ""
 if map_text:
@@ -114,6 +147,23 @@ if map_text:
 
 st.divider()
 st.subheader("사진 추가(여러 장)")
+
+# (수정 모드) 기존 사진 표시/삭제 선택
+existing_ids = (edit_item.get("image_file_ids") if edit_item else []) or []
+delete_ids = set()
+if edit_item and existing_ids:
+    st.caption("기존 사진(삭제할 사진을 체크)")
+    service_preview = drive_store._drive_service()
+    cols_prev = st.columns(3)
+    for i, fid in enumerate(existing_ids):
+        b = drive_store.get_image_bytes(service_preview, fid)
+        col = cols_prev[i % 3]
+        if b:
+            col.image(b, use_container_width=True)
+        if col.checkbox("삭제", key=f"del_img_{fid}"):
+            delete_ids.add(fid)
+    st.divider()
+
 
 pasted_or_uploaded_now = False
 
@@ -167,44 +217,107 @@ else:
 st.divider()
 
 can_save = bool(title.strip())
-if st.button("✅ 저장", type="primary", use_container_width=True, disabled=not can_save):
-    service = drive_store._drive_service()
-    images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
 
-    image_file_ids = []
-    for (img_bytes, mime) in st.session_state["draft_images"]:
-        ts = int(time.time() * 1000)
-        ext = "png" if (mime or "").lower().endswith("png") else "jpg"
-        safe_trip = trip_name.replace(" ", "_")
-        filename = f"{safe_trip}_{date_str}_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
-        fid = drive_store.upload_image_bytes(service, images_folder_id, filename, img_bytes, mime or "image/png")
-        image_file_ids.append(fid)
+# 모바일에서도 버튼이 한 줄로 보이도록(짧은 라벨 + columns)
+btn1, btn2 = st.columns([1, 1], gap="small")
 
-    item = {
-        "id": uuid.uuid4().hex,
-        "date": date_str,
-        "time": time_str.strip(),
-        "title": title.strip(),
-        "memo": memo.strip(),
-        "map_text": map_text,
-        "map_url": map_url,
-        "image_file_ids": image_file_ids,
-        "ts": int(time.time()),
-    }
-    trip["items"].append(item)
+if edit_item:
+    if btn1.button("💾 수정 저장", type="primary", use_container_width=True, disabled=not can_save):
+        service = drive_store._drive_service()
+        images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
 
-    def _sort_key(x):
-        t = x.get("time") or ""
-        return (x.get("date") or "", t, x.get("ts") or 0)
-    trip["items"] = sorted(trip["items"], key=_sort_key)
+        kept_ids = [fid for fid in (edit_item.get("image_file_ids") or []) if fid not in delete_ids]
 
-    save_db(ROOT_FOLDER_ID, db)
+        new_ids = []
+        for (img_bytes, mime) in st.session_state["draft_images"]:
+            ts = int(time.time() * 1000)
+            ext = "png" if (mime or "").lower().endswith("png") else "jpg"
+            safe_trip = trip_name.replace(" ", "_")
+            filename = f"{safe_trip}_{date_str}_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+            fid = drive_store.upload_image_bytes(service, images_folder_id, filename, img_bytes, mime or "image/png")
+            new_ids.append(fid)
 
-    st.session_state["draft_images"] = []
-    st.session_state["last_paste_sig"] = None
+        edit_item.update({
+            "date": date_str,
+            "time": time_str.strip(),
+            "title": title.strip(),
+            "memo": memo.strip(),
+            "map_text": map_text,
+            "map_url": map_url,
+            "image_file_ids": kept_ids + new_ids,
+            "ts": int(time.time()),
+        })
 
-    st.success("저장되었습니다. 일정 보기로 이동합니다…")
-    try:
-        st.switch_page("pages/2_View_Schedule.py")
-    except Exception:
-        st.info("왼쪽 메뉴에서 '일정 보기'로 이동해줘.")
+        def _sort_key(x):
+            t = x.get("time") or ""
+            return (x.get("date") or "", t, x.get("ts") or 0)
+        trip["items"] = sorted(trip.get("items", []) or [], key=_sort_key)
+
+        save_db(ROOT_FOLDER_ID, db)
+
+        st.session_state["draft_images"] = []
+        st.session_state["last_paste_sig"] = None
+        st.session_state.pop("edit_id", None)
+        st.session_state.pop("edit_trip_name", None)
+
+        st.success("수정되었습니다. 일정 보기로 이동합니다…")
+        try:
+            st.switch_page("pages/2_View_Schedule.py")
+        except Exception:
+            st.info("왼쪽 메뉴에서 '일정 보기'로 이동해줘.")
+
+    if btn2.button("➕ 추가 모드", use_container_width=True):
+        st.session_state.pop("edit_id", None)
+        st.session_state.pop("edit_trip_name", None)
+        st.session_state["draft_images"] = []
+        st.session_state["last_paste_sig"] = None
+        st.rerun()
+
+else:
+    if btn1.button("✅ 저장", type="primary", use_container_width=True, disabled=not can_save):
+        service = drive_store._drive_service()
+        images_folder_id = drive_store.ensure_subfolder(service, ROOT_FOLDER_ID, drive_store.IMAGES_FOLDER_NAME)
+
+        image_file_ids = []
+        for (img_bytes, mime) in st.session_state["draft_images"]:
+            ts = int(time.time() * 1000)
+            ext = "png" if (mime or "").lower().endswith("png") else "jpg"
+            safe_trip = trip_name.replace(" ", "_")
+            filename = f"{safe_trip}_{date_str}_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+            fid = drive_store.upload_image_bytes(service, images_folder_id, filename, img_bytes, mime or "image/png")
+            image_file_ids.append(fid)
+
+        item = {
+            "id": uuid.uuid4().hex,
+            "date": date_str,
+            "time": time_str.strip(),
+            "title": title.strip(),
+            "memo": memo.strip(),
+            "map_text": map_text,
+            "map_url": map_url,
+            "image_file_ids": image_file_ids,
+            "ts": int(time.time()),
+        }
+        trip["items"].append(item)
+
+        def _sort_key(x):
+            t = x.get("time") or ""
+            return (x.get("date") or "", t, x.get("ts") or 0)
+        trip["items"] = sorted(trip["items"], key=_sort_key)
+
+        save_db(ROOT_FOLDER_ID, db)
+
+        st.session_state["draft_images"] = []
+        st.session_state["last_paste_sig"] = None
+
+        st.success("저장되었습니다. 일정 보기로 이동합니다…")
+        try:
+            st.switch_page("pages/2_View_Schedule.py")
+        except Exception:
+            st.info("왼쪽 메뉴에서 '일정 보기'로 이동해줘.")
+
+    if btn2.button("📅 일정 보기", use_container_width=True):
+        try:
+            st.switch_page("pages/2_View_Schedule.py")
+        except Exception:
+            pass
