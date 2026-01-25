@@ -123,3 +123,17 @@ def get_trip(db: Dict[str, Any], trip_name: str) -> Optional[Dict[str, Any]]:
         if t.get("name") == trip_name:
             return t
     return None
+
+
+import streamlit as st
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_image_bytes(fid: str):
+    """
+    Cached wrapper for get_image_bytes.
+    Dramatically speeds up repeated image loads.
+    """
+    try:
+        return get_image_bytes(fid)
+    except Exception:
+        return None
