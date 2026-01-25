@@ -125,19 +125,19 @@ def get_trip(db: Dict[str, Any], trip_name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+import streamlit as st
+
+
 @st.cache_resource(show_spinner=False)
-def _drive_service_cached():
-    """Cache Google Drive service client to avoid re-auth each rerun."""
+def _drive_service():
+    """Cached Google Drive service client to avoid re-auth every rerun."""
     return _drive_service_uncached()
 
-def _drive_service():
-    return _drive_service_cached()
 
-
-@st.cache_data(ttl=24*3600, max_entries=3000, show_spinner=False, persist="disk")
-def get_image_bytes_cached(image_file_id: str):
-    """Download image bytes from Drive with disk-backed cache."""
+@st.cache_data(ttl=6*3600, max_entries=3000, show_spinner=False)
+def cached_image_bytes(fid: str):
+    """Cache image bytes from Google Drive to speed up repeated views."""
     try:
-        return get_image_bytes(image_file_id)
+        return get_image_bytes(fid)
     except Exception:
         return None
