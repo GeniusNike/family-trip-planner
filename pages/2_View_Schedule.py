@@ -586,9 +586,9 @@ for d in dates_sorted:
                 if image_ids:
                     imgs = []
                     for fid in image_ids:
-                        b = get_image_bytes(fid)
+                        path = drive_store.get_image_path_cached(fid)
                         if path:
-                            imgs.append(b)
+                            imgs.append(path)
                     if imgs:
                         st.caption("📷 사진")
                         st.image(imgs, width='stretch')
