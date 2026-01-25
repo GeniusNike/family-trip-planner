@@ -3,7 +3,6 @@ google-api-python-client
 google-auth
 google-auth-httplib2
 google-auth-oauthlib
-pillow
 streamlit-paste-button
 folium==0.17.0
 streamlit-folium==0.22.0

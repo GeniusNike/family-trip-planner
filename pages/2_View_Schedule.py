@@ -102,10 +102,10 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
             st.caption("기존 사진(삭제할 사진 체크)")
             cols_prev = st.columns(3)
             for i, fid in enumerate(existing_ids):
-                b = drive_store.get_image_preview_bytes_cached(fid)
+                path = drive_store.get_image_path_cached(fid)
                 col = cols_prev[i % 3]
-                if b:
-                    col.image(b, width='stretch')
+                if path:
+                    col.image(path, width='stretch')
                 if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
                     delete_ids.add(fid)
 
@@ -587,7 +587,7 @@ for d in dates_sorted:
                     imgs = []
                     for fid in image_ids:
                         b = get_image_bytes(fid)
-                        if b:
+                        if path:
                             imgs.append(b)
                     if imgs:
                         st.caption("📷 사진")

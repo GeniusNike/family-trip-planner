@@ -1,5 +1,10 @@
 import io
 import json
+import hashlib
+import tempfile
+import pathlib
+import io
+from googleapiclient.http import MediaIoBaseDownload
 import ssl
 import time
 from typing import Optional, Dict, Any, List
@@ -136,6 +141,15 @@ def _drive_service():
     return _drive_service_cached()
 
 
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=5000)
+def get_image_bytes_cached(image_file_id: str):
+    """Cache image bytes from Drive for 1 hour to speed up repeated views."""
+    try:
+        return get_image_bytes(image_file_id)
+    except Exception:
+        return None
+
+
 def _execute_with_retry(request, retries: int = 5, base_delay: float = 0.5):
     """Execute googleapiclient request with retries for transient SSL/network issues."""
     last_err = None
@@ -155,32 +169,37 @@ def _execute_with_retry(request, retries: int = 5, base_delay: float = 0.5):
     raise last_err
 
 
-from io import BytesIO
+def _image_cache_dir() -> str:
+    # Use a stable temp dir per app container
+    p = pathlib.Path(tempfile.gettempdir()) / "trip_planner_img_cache"
+    p.mkdir(parents=True, exist_ok=True)
+    return str(p)
 
-@st.cache_data(ttl=1800, show_spinner=False, max_entries=300)
-def get_image_preview_bytes_cached(image_file_id: str, max_px: int = 1280):
-    """Download image bytes and downscale for fast preview + lower memory."""
+def _cache_path_for_fid(fid: str) -> str:
+    # Stable filename based on fid
+    name = hashlib.sha256(fid.encode("utf-8")).hexdigest()[:24] + ".img"
+    return str(pathlib.Path(_image_cache_dir()) / name)
+
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=1000)
+def get_image_path_cached(fid: str) -> str | None:
+    """Download an image from Drive into a local temp file and return its path.
+    Caches the *path* (small) and relies on the file existing on disk.
+    This avoids keeping large image bytes in Streamlit cache and prevents native crashes.
+    """
     try:
-        raw = get_image_bytes(image_file_id)
-        if not raw:
-            return None
-        # Downscale large images for preview to reduce memory / crashes on Streamlit Cloud
-        try:
-            from PIL import Image
-            im = Image.open(BytesIO(raw))
-            im.load()
-            w, h = im.size
-            if max(w, h) > max_px:
-                scale = max_px / float(max(w, h))
-                new_size = (max(1, int(w*scale)), max(1, int(h*scale)))
-                im = im.resize(new_size)
-            if im.mode in ("RGBA", "P"):
-                im = im.convert("RGB")
-            out = BytesIO()
-            im.save(out, format="JPEG", quality=85, optimize=True)
-            return out.getvalue()
-        except Exception:
-            # If PIL not available or any processing fails, fall back to raw bytes
-            return raw
+        path = _cache_path_for_fid(fid)
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            return path
+        service = _drive_service()  # cached resource
+        request = service.files().get_media(fileId=fid)
+        fh = io.FileIO(path, "wb")
+        downloader = MediaIoBaseDownload(fh, request, chunksize=256*1024)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        fh.close()
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            return path
+        return None
     except Exception:
         return None
