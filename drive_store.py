@@ -15,7 +15,7 @@ DB_FILENAME = "trips.json"
 IMAGES_FOLDER_NAME = "images"
 
 
-def _drive_service():
+def _drive_service_uncached():
     oauth = st.secrets["oauth"]
     creds = Credentials(
         token=None,
@@ -25,11 +25,7 @@ def _drive_service():
         client_secret=oauth["client_secret"],
         scopes=SCOPES,
     )
-    try:
-        creds.refresh(Request())
-    except Exception as e:
-        # Most common: google.auth.exceptions.RefreshError (invalid_grant, revoked token, missing refresh_token)
-        raise RuntimeError('OAuth 토큰 갱신 실패(RefreshError). Streamlit Secrets의 oauth 값(특히 refresh_token/client_id/client_secret)이 유효한지 확인하고, 필요하면 토큰을 새로 발급해 넣어주세요.') from e
+    creds.refresh(Request())
     return build("drive", "v3", credentials=creds)
 
 
@@ -129,15 +125,19 @@ def get_trip(db: Dict[str, Any], trip_name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-import streamlit as st
+@st.cache_resource(show_spinner=False)
+def _drive_service_cached():
+    """Cache Google Drive service client to avoid re-auth each rerun."""
+    return _drive_service_uncached()
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def cached_image_bytes(fid: str):
-    """
-    Cached wrapper for get_image_bytes.
-    Dramatically speeds up repeated image loads.
-    """
+def _drive_service():
+    return _drive_service_cached()
+
+
+@st.cache_data(ttl=24*3600, max_entries=3000, show_spinner=False, persist="disk")
+def get_image_bytes_cached(image_file_id: str):
+    """Download image bytes from Drive with disk-backed cache."""
     try:
-        return get_image_bytes(fid)
+        return get_image_bytes(image_file_id)
     except Exception:
         return None

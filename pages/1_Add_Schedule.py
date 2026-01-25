@@ -182,7 +182,7 @@ if edit_item and existing_ids:
     st.caption("기존 사진(삭제할 사진을 체크)")
     cols_prev = st.columns(3)
     for i, fid in enumerate(existing_ids):
-        b = drive_store.cached_image_bytes(fid)
+        b = drive_store.get_image_bytes_cached(fid)
         col = cols_prev[i % 3]
         if b:
             col.image(b, width='stretch')
