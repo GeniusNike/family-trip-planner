@@ -25,7 +25,11 @@ def _drive_service():
         client_secret=oauth["client_secret"],
         scopes=SCOPES,
     )
-    creds.refresh(Request())
+    try:
+        creds.refresh(Request())
+    except Exception as e:
+        # Most common: google.auth.exceptions.RefreshError (invalid_grant, revoked token, missing refresh_token)
+        raise RuntimeError('OAuth 토큰 갱신 실패(RefreshError). Streamlit Secrets의 oauth 값(특히 refresh_token/client_id/client_secret)이 유효한지 확인하고, 필요하면 토큰을 새로 발급해 넣어주세요.') from e
     return build("drive", "v3", credentials=creds)
 
 

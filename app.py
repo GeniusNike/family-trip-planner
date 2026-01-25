@@ -8,7 +8,12 @@ ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
 st.title("🧳 가족 여행 플래너")
 st.caption("Streamlit Cloud + Google Drive 저장(OAuth)")
 
-db = load_db(ROOT_FOLDER_ID)
+try:
+    db = load_db(ROOT_FOLDER_ID)
+except Exception as e:
+    st.error('Google Drive 인증(OAuth) 문제로 DB를 불러오지 못했습니다. Streamlit Cloud → App settings → Secrets의 oauth 설정을 확인하거나 토큰을 재발급해 주세요.')
+    st.exception(e)
+    st.stop()
 names = list_trip_names(db)
 
 col1, col2 = st.columns([2, 1])
@@ -31,7 +36,7 @@ with col2:
 st.divider()
 st.markdown(
     """
-### v3.14.8.8.7.5.4.3.2 변경점(버그 수정)
+### v3.14.9.8.7.5.4.3.2 변경점(버그 수정)
 - Add: 붙여넣기/업로드 후 **즉시 미리보기**가 보이도록 rerun 처리 + 중복 방지 유지
 - Edit(수정):
   - 기존 사진을 **선택해서 삭제(유지 체크 해제)** 가능
