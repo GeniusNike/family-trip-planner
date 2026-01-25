@@ -102,10 +102,10 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
             st.caption("기존 사진(삭제할 사진 체크)")
             cols_prev = st.columns(3)
             for i, fid in enumerate(existing_ids):
-                path = drive_store.get_image_path_cached(fid)
+                b = drive_store.get_image_bytes(fid)
                 col = cols_prev[i % 3]
-                if path:
-                    col.image(path, width='stretch')
+                if b:
+                    col.image(b, width='stretch')
                 if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
                     delete_ids.add(fid)
 
@@ -465,7 +465,7 @@ if view_mode == "표":
 
     edited = st.data_editor(
         rows,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         key=f"table_editor_{trip_name}",
         column_config={
@@ -486,7 +486,7 @@ if view_mode == "표":
                 break
 
     btn_cols = st.columns([1.4, 1.0, 6], gap="small")
-    if btn_cols[0].button("✏️ 선택한 일정 수정", type="primary", use_container_width=True, disabled=(selected_idx is None)):
+    if btn_cols[0].button("✏️ 선택한 일정 수정", type="primary", width='stretch', disabled=(selected_idx is None)):
         ids = st.session_state.get(f"_table_row_ids_{trip_name}", [])
         if 0 <= selected_idx < len(ids):
             st.session_state["edit_trip_name"] = trip_name
@@ -496,7 +496,7 @@ if view_mode == "표":
         else:
             st.warning("선택한 행의 ID를 찾지 못했어. 새로고침 후 다시 시도해줘.")
 
-    if btn_cols[1].button("✅ 선택 해제", use_container_width=True):
+    if btn_cols[1].button("✅ 선택 해제", width='stretch'):
         st.session_state.pop(f"table_editor_{trip_name}", None)
         st.rerun()
 
@@ -586,9 +586,9 @@ for d in dates_sorted:
                 if image_ids:
                     imgs = []
                     for fid in image_ids:
-                        path = drive_store.get_image_path_cached(fid)
-                        if path:
-                            imgs.append(path)
+                        b = get_image_bytes(fid)
+                        if b:
+                            imgs.append(b)
                     if imgs:
                         st.caption("📷 사진")
                         st.image(imgs, width='stretch')
