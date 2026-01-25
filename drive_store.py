@@ -1,7 +1,5 @@
 import io
 import json
-import ssl
-import time
 from typing import Optional, Dict, Any, List
 
 import streamlit as st
@@ -17,7 +15,7 @@ DB_FILENAME = "trips.json"
 IMAGES_FOLDER_NAME = "images"
 
 
-def _drive_service_uncached():
+def _drive_service():
     oauth = st.secrets["oauth"]
     creds = Credentials(
         token=None,
@@ -33,7 +31,7 @@ def _drive_service_uncached():
 
 def find_file_in_folder(service, folder_id: str, name: str) -> Optional[str]:
     q = f"'{folder_id}' in parents and name='{name}' and trashed=false"
-    res = _execute_with_retry(service.files().list(q=q, fields="files(id,name)"))
+    res = service.files().list(q=q, fields="files(id,name)").execute()
     files = res.get("files", [])
     return files[0]["id"] if files else None
 
@@ -43,13 +41,13 @@ def ensure_subfolder(service, parent_id: str, name: str) -> str:
         f"'{parent_id}' in parents and name='{name}' "
         f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
     )
-    res = _execute_with_retry(service.files().list(q=q, fields="files(id,name)"))
+    res = service.files().list(q=q, fields="files(id,name)").execute()
     files = res.get("files", [])
     if files:
         return files[0]["id"]
 
     meta = {"name": name, "mimeType": "application/vnd.google-apps.folder", "parents": [parent_id]}
-    created = _execute_with_retry(service.files().create(body=meta, fields="id"))
+    created = service.files().create(body=meta, fields="id").execute()
     return created["id"]
 
 
@@ -75,18 +73,18 @@ def upload_json(service, folder_id: str, name: str, data: Dict[str, Any]) -> str
 
     existing = find_file_in_folder(service, folder_id, name)
     if existing:
-        _execute_with_retry(service.files().update(fileId=existing, media_body=media))
+        service.files().update(fileId=existing, media_body=media).execute()
         return existing
 
     meta = {"name": name, "parents": [folder_id]}
-    created = _execute_with_retry(service.files().create(body=meta, media_body=media, fields="id"))
+    created = service.files().create(body=meta, media_body=media, fields="id").execute()
     return created["id"]
 
 
 def upload_image_bytes(service, folder_id: str, filename: str, img_bytes: bytes, mime: str) -> str:
     media = MediaIoBaseUpload(io.BytesIO(img_bytes), mimetype=mime, resumable=False)
     meta = {"name": filename, "parents": [folder_id]}
-    created = _execute_with_retry(service.files().create(body=meta, media_body=media, fields="id"))
+    created = service.files().create(body=meta, media_body=media, fields="id").execute()
     return created["id"]
 
 
@@ -125,34 +123,3 @@ def get_trip(db: Dict[str, Any], trip_name: str) -> Optional[Dict[str, Any]]:
         if t.get("name") == trip_name:
             return t
     return None
-
-
-@st.cache_resource(show_spinner=False)
-def _drive_service_cached():
-    """Cache Drive service client across reruns."""
-    return _drive_service_uncached()
-
-def _drive_service():
-    return _drive_service_cached()
-
-
-
-
-
-def _execute_with_retry(request, retries: int = 5, base_delay: float = 0.5):
-    """Execute googleapiclient request with retries for transient SSL/network issues."""
-    last_err = None
-    for i in range(retries):
-        try:
-            return request.execute(num_retries=3)
-        except ssl.SSLError as e:
-            last_err = e
-        except Exception as e:
-            # Some transient network errors come as generic exceptions from httplib2
-            msg = str(e).lower()
-            if "ssl" in msg or "timed out" in msg or "connection" in msg or "recv" in msg:
-                last_err = e
-            else:
-                raise
-        time.sleep(base_delay * (2 ** i))
-    raise last_err

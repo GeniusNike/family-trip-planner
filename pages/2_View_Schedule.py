@@ -465,7 +465,7 @@ if view_mode == "표":
 
     edited = st.data_editor(
         rows,
-        width='stretch',
+        use_container_width=True,
         hide_index=True,
         key=f"table_editor_{trip_name}",
         column_config={
@@ -486,7 +486,7 @@ if view_mode == "표":
                 break
 
     btn_cols = st.columns([1.4, 1.0, 6], gap="small")
-    if btn_cols[0].button("✏️ 선택한 일정 수정", type="primary", width='stretch', disabled=(selected_idx is None)):
+    if btn_cols[0].button("✏️ 선택한 일정 수정", type="primary", use_container_width=True, disabled=(selected_idx is None)):
         ids = st.session_state.get(f"_table_row_ids_{trip_name}", [])
         if 0 <= selected_idx < len(ids):
             st.session_state["edit_trip_name"] = trip_name
@@ -496,7 +496,7 @@ if view_mode == "표":
         else:
             st.warning("선택한 행의 ID를 찾지 못했어. 새로고침 후 다시 시도해줘.")
 
-    if btn_cols[1].button("✅ 선택 해제", width='stretch'):
+    if btn_cols[1].button("✅ 선택 해제", use_container_width=True):
         st.session_state.pop(f"table_editor_{trip_name}", None)
         st.rerun()
 
