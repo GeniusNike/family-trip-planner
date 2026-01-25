@@ -136,15 +136,6 @@ def _drive_service():
     return _drive_service_cached()
 
 
-@st.cache_data(ttl=3600, show_spinner=False, max_entries=5000)
-def get_image_bytes_cached(image_file_id: str):
-    """Cache image bytes from Drive for 1 hour to speed up repeated views."""
-    try:
-        return get_image_bytes(image_file_id)
-    except Exception:
-        return None
-
-
 def _execute_with_retry(request, retries: int = 5, base_delay: float = 0.5):
     """Execute googleapiclient request with retries for transient SSL/network issues."""
     last_err = None
@@ -162,3 +153,34 @@ def _execute_with_retry(request, retries: int = 5, base_delay: float = 0.5):
                 raise
         time.sleep(base_delay * (2 ** i))
     raise last_err
+
+
+from io import BytesIO
+
+@st.cache_data(ttl=1800, show_spinner=False, max_entries=300)
+def get_image_preview_bytes_cached(image_file_id: str, max_px: int = 1280):
+    """Download image bytes and downscale for fast preview + lower memory."""
+    try:
+        raw = get_image_bytes(image_file_id)
+        if not raw:
+            return None
+        # Downscale large images for preview to reduce memory / crashes on Streamlit Cloud
+        try:
+            from PIL import Image
+            im = Image.open(BytesIO(raw))
+            im.load()
+            w, h = im.size
+            if max(w, h) > max_px:
+                scale = max_px / float(max(w, h))
+                new_size = (max(1, int(w*scale)), max(1, int(h*scale)))
+                im = im.resize(new_size)
+            if im.mode in ("RGBA", "P"):
+                im = im.convert("RGB")
+            out = BytesIO()
+            im.save(out, format="JPEG", quality=85, optimize=True)
+            return out.getvalue()
+        except Exception:
+            # If PIL not available or any processing fails, fall back to raw bytes
+            return raw
+    except Exception:
+        return None

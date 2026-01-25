@@ -102,7 +102,7 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
             st.caption("기존 사진(삭제할 사진 체크)")
             cols_prev = st.columns(3)
             for i, fid in enumerate(existing_ids):
-                b = drive_store.get_image_bytes_cached(fid)
+                b = drive_store.get_image_preview_bytes_cached(fid)
                 col = cols_prev[i % 3]
                 if b:
                     col.image(b, width='stretch')
