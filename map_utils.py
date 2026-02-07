@@ -169,7 +169,13 @@ def render_day_map(day_items: list[dict], height: int = 520, key: 'Optional[str]
     if len(bounds) >= 2:
         m.fit_bounds(bounds, padding=(30, 30))
 
-    st_folium(m, width=None, height=height, key=key)
+    # streamlit-folium 버전에 따라 `key` 인자를 지원하지 않는 경우가 있습니다.
+    # (Streamlit Cloud에서 requirements 캐시/고정으로 구버전이 남아있는 경우 등)
+    # 먼저 key 포함 호출을 시도하고, TypeError면 key 없이 재시도합니다.
+    try:
+        st_folium(m, width=None, height=height, key=key)
+    except TypeError:
+        st_folium(m, width=None, height=height)
 
 
 def get_coord_from_map_url(map_url: str):
