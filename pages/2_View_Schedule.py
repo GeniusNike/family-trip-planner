@@ -107,14 +107,16 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
         delete_ids = set()
         if existing_ids:
             st.caption("기존 사진(삭제할 사진 체크)")
-            cols_prev = st.columns(3)
-            for i, fid in enumerate(existing_ids):
-                b = drive_store.get_image_bytes(fid)
-                col = cols_prev[i % 3]
-                if b:
-                    col.image(b, width='stretch')
-                if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
-                    delete_ids.add(fid)
+            with st.expander(f"기존 사진 {len(existing_ids)}장 미리보기(눌렀을 때만 다운로드)", expanded=False):
+                cols_prev = st.columns(3)
+                for i, fid in enumerate(existing_ids):
+                    # 미리보기는 다이얼로그를 열자마자 자동으로 가져오지 않도록 지연 로딩
+                    b = drive_store.get_image_bytes(fid)
+                    col = cols_prev[i % 3]
+                    if b:
+                        col.image(b, use_container_width=True)
+                    if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
+                        delete_ids.add(fid)
 
         pasted_or_uploaded_now = False
 
@@ -252,17 +254,10 @@ if st.session_state.get("photo_trip") != trip_name:
     st.session_state.photo_open = {}
     st.session_state.photo_data = {}
 
-# (Inline edit) 수정 요청이 있으면 이 페이지에서 바로 다이얼로그로 열기
-if st.session_state.get("inline_edit_id") and st.session_state.get("inline_edit_trip"):
-    _tname = st.session_state["inline_edit_trip"]
-    _iid = st.session_state["inline_edit_id"]
-    _trip, _it = _find_item_by_id(db, _tname, _iid)
-    if _it:
-        _inline_edit_dialog(db, _tname, _it)
-    else:
-        st.warning("수정할 일정을 찾지 못했어. (여행/일정이 변경되었을 수 있어요)")
-        st.session_state.pop("inline_edit_id", None)
-        st.session_state.pop("inline_edit_trip", None)
+# (Inline edit) 이전 세션에서 남아있는 상태 때문에 의도치 않게 사진/파일을 미리 불러와 느려지는 경우가 있어
+# 이 페이지에서는 자동으로 다이얼로그를 띄우지 않고 상태만 정리합니다.
+st.session_state.pop("inline_edit_id", None)
+st.session_state.pop("inline_edit_trip", None)
 trip = get_trip(db, trip_name)
 if not trip:
     st.error("여행을 찾을 수 없어. 새로고침 후 다시 시도해줘.")
@@ -530,7 +525,8 @@ if view_mode == "타임라인":
             st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
 
         with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-            render_day_map(day_items, height=560)
+            # streamlit-folium은 동일 페이지에서 여러 지도를 그릴 때 key가 없으면 빈 화면이 되는 경우가 있어요.
+            render_day_map(day_items, height=560, key=f"day_map_{trip_name}_{d}")
 
         for idx2, it in enumerate(day_items, start=1):
             t = (it.get("time") or "").strip()
@@ -569,7 +565,7 @@ for d in dates_sorted:
         st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
 
     with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-        render_day_map(day_items, height=560)
+        render_day_map(day_items, height=560, key=f"day_map_{trip_name}_{d}")
 
     st.caption("구글맵에서 경유지가 입력된 순서(시간순)대로 잡혀요.")
 
@@ -592,36 +588,50 @@ for d in dates_sorted:
             if memo:
                 st.write(memo)
 
-            # photos (lazy-load per item)
+            # photos (strict lazy-load per item)
             image_ids = it.get("image_file_ids") or []
             if image_ids:
                 item_id = it.get("id") or f"{it.get('date','')}_{it.get('time','')}_{it.get('title','')}"
+                # Streamlit widget key에 안전하도록 해시로 짧게 만듭니다.
+                _sid = hashlib.md5(item_id.encode("utf-8", errors="ignore")).hexdigest()[:12]
                 opened = st.session_state.photo_open.get(item_id, False)
+
+                # 1) 열기/닫기 (이 버튼은 "다운로드"를 트리거하지 않음)
                 btn_label = "📷 사진 보기" if not opened else "🙈 사진 숨기기"
-                if st.button(btn_label, key=f"photo_btn_{item_id}", width='stretch'):
+                if st.button(btn_label, key=f"photo_toggle_{_sid}", use_container_width=True):
                     st.session_state.photo_open[item_id] = not opened
                     st.rerun()
 
                 if not st.session_state.photo_open.get(item_id, False):
-                    st.caption(f"사진 {len(image_ids)}장 (버튼을 누르면 불러와요)")
+                    st.caption(f"사진 {len(image_ids)}장 (열고 '불러오기'를 눌러야 다운로드돼요)")
+                else:
+                    # 2) 열려 있어도 자동 다운로드하지 않고, 명시적으로 "불러오기"를 눌렀을 때만 가져옵니다.
+                    cached = item_id in st.session_state.photo_data
 
-                if st.session_state.photo_open.get(item_id, False):
-                    # Load only once per session
-                    if item_id not in st.session_state.photo_data:
-                        with st.spinner("사진 불러오는 중..."):
-                            imgs = []
-                            for fid in image_ids:
-                                b = get_image_bytes(fid)
-                                if b:
-                                    imgs.append(b)
-                            st.session_state.photo_data[item_id] = imgs
+                    cA, cB = st.columns([1, 1], gap="small")
+                    if not cached:
+                        if cA.button("⬇️ 사진 불러오기", key=f"photo_load_{_sid}", use_container_width=True):
+                            with st.spinner("사진 불러오는 중..."):
+                                imgs = []
+                                for fid in image_ids:
+                                    b = get_image_bytes(fid)
+                                    if b:
+                                        imgs.append(b)
+                                st.session_state.photo_data[item_id] = imgs
+                            st.rerun()
+                    else:
+                        cA.caption("✅ 사진 캐시됨")
+
+                    if cB.button("🧹 사진 캐시 지우기", key=f"photo_clear_{_sid}", use_container_width=True):
+                        st.session_state.photo_data.pop(item_id, None)
+                        st.rerun()
 
                     imgs = st.session_state.photo_data.get(item_id, [])
                     if imgs:
                         st.caption("📷 사진")
-                        st.image(imgs, width='stretch')
+                        st.image(imgs, use_container_width=True)
                     else:
-                        st.warning("표시할 사진이 없습니다.")
+                        st.info("'사진 불러오기'를 누르면 표시됩니다.")
             # actions (edit/delete) - keep existing helper function if present
             cols = st.columns([1, 1, 6])
             if cols[0].button("✏️ 수정", key=f"edit_{it.get('id','')}", width='stretch'):

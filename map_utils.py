@@ -119,11 +119,12 @@ def collect_day_points(day_items: list[dict]):
     return pts
 
 
-def render_day_map(day_items: list[dict], height: int = 520, key: 'Optional[str]' = None):
+def render_day_map(day_items: list[dict], height: int = 520, **kwargs):
     """
     Render a big map with numbered markers (1,2,3...) and fit bounds.
     Uses Folium + streamlit-folium.
     """
+    key: Optional[str] = kwargs.get("key")
     try:
         import folium  # type: ignore
         from folium.features import DivIcon  # type: ignore
