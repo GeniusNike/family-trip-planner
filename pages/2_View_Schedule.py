@@ -318,6 +318,50 @@ for idx, it in enumerate(items):
                 txt = mu
         it["map_text"] = txt
 
+
+def _get_item_title_for_confirm(item_id: str) -> str:
+    for x in (trip.get("items") or []):
+        if x.get("id") == item_id:
+            return x.get("title") or "(제목 없음)"
+    return "(알 수 없는 일정)"
+
+
+def _show_delete_confirm_dialog():
+    """카드 보기 삭제 시 '정말 삭제할까요?' 확인 다이얼로그."""
+    pending_id = st.session_state.get("confirm_delete_id")
+    if not pending_id:
+        return
+
+    title = _get_item_title_for_confirm(pending_id)
+
+    @st.dialog("🗑️ 일정 삭제", width="small")
+    def _dlg():
+        st.write("정말 삭제할까요?")
+        st.caption(f"대상: {title}")
+        c1, c2 = st.columns([1, 1], gap="small")
+        if c1.button("삭제", type="primary", use_container_width=True):
+            try:
+                trip["items"] = [x for x in (trip.get("items") or []) if x.get("id") != pending_id]
+                save_db(ROOT_FOLDER_ID, db)
+                st.toast("🗑️ 삭제 완료")
+            except Exception as e:
+                st.error(f"삭제 중 오류가 발생했어요: {e}")
+            finally:
+                st.session_state["confirm_delete_id"] = None
+            st.rerun()
+
+        if c2.button("취소", use_container_width=True):
+            st.session_state["confirm_delete_id"] = None
+            st.rerun()
+
+    _dlg()
+
+
+# --- 카드 보기 삭제 확인 다이얼로그 트리거 ---
+if "confirm_delete_id" not in st.session_state:
+    st.session_state["confirm_delete_id"] = None
+_show_delete_confirm_dialog()
+
 with st.sidebar:
     st.subheader("보기 옵션 · v3_15")
     view_mode = st.radio("보기", ["카드", "표", "타임라인"], index=0)
@@ -679,7 +723,8 @@ for d in dates_sorted:
                 st.session_state["add_trip_select"] = trip_name
                 st.switch_page("pages/1_Add_Schedule.py")
             if cols[1].button("🗑️ 삭제", key=f"del_{it.get('id','')}", width='stretch'):
-                st.session_state["delete_id"] = it.get("id")
+                # 바로 삭제하지 않고 확인 다이얼로그를 띄웁니다.
+                st.session_state["confirm_delete_id"] = it.get("id")
                 st.rerun()
 
     st.divider()
