@@ -1,3 +1,5 @@
+from typing import Optional
+
 import re
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -117,7 +119,7 @@ def collect_day_points(day_items: list[dict]):
     return pts
 
 
-def render_day_map(day_items: list[dict], height: int = 520, map_key: str | None = None):
+def render_day_map(day_items: list[dict], height: int = 520, key: 'Optional[str]' = None):
     """
     Render a big map with numbered markers (1,2,3...) and fit bounds.
     Uses Folium + streamlit-folium.
@@ -167,14 +169,7 @@ def render_day_map(day_items: list[dict], height: int = 520, map_key: str | None
     if len(bounds) >= 2:
         m.fit_bounds(bounds, padding=(30, 30))
 
-    # NOTE:
-    # Streamlit pages often render multiple maps (e.g., one per day) inside loops/expanders.
-    # streamlit-folium is a custom component and can collide if keys are not unique.
-    # Providing a stable per-map key prevents "blank map" / non-updating behavior.
-    if map_key is not None:
-        st_folium(m, width=None, height=height, key=map_key)
-    else:
-        st_folium(m, width=None, height=height)
+    st_folium(m, width=None, height=height, key=key)
 
 
 def get_coord_from_map_url(map_url: str):

@@ -246,6 +246,12 @@ if qp_trip_val and qp_trip_val in trip_names:
 default_index = trip_names.index(default_trip) if default_trip else 0
 trip_name = st.selectbox("여행 선택", options=trip_names, index=default_index, key="view_trip_select")
 
+# 사진 지연로딩 상태는 '여행'이 바뀌면 초기화 (이전 여행에서 열어둔 사진들이 남아있으면 다시 불러오느라 느려짐)
+if st.session_state.get("photo_trip") != trip_name:
+    st.session_state["photo_trip"] = trip_name
+    st.session_state.photo_open = {}
+    st.session_state.photo_data = {}
+
 # (Inline edit) 수정 요청이 있으면 이 페이지에서 바로 다이얼로그로 열기
 if st.session_state.get("inline_edit_id") and st.session_state.get("inline_edit_trip"):
     _tname = st.session_state["inline_edit_trip"]
@@ -524,7 +530,7 @@ if view_mode == "타임라인":
             st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
 
         with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-            render_day_map(day_items, height=560, map_key=f"daymap_{trip_name}_{d}")
+            render_day_map(day_items, height=560, key=f"day_map_{trip_name}_{d}")
 
         for idx2, it in enumerate(day_items, start=1):
             t = (it.get("time") or "").strip()
@@ -563,7 +569,7 @@ for d in dates_sorted:
         st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
 
     with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-        render_day_map(day_items, height=560, map_key=f"daymap_{trip_name}_{d}")
+        render_day_map(day_items, height=560, key=f"day_map_{trip_name}_{d}")
 
     st.caption("구글맵에서 경유지가 입력된 순서(시간순)대로 잡혀요.")
 
@@ -595,6 +601,9 @@ for d in dates_sorted:
                 if st.button(btn_label, key=f"photo_btn_{item_id}", width='stretch'):
                     st.session_state.photo_open[item_id] = not opened
                     st.rerun()
+
+                if not st.session_state.photo_open.get(item_id, False):
+                    st.caption(f"사진 {len(image_ids)}장 (버튼을 누르면 불러와요)")
 
                 if st.session_state.photo_open.get(item_id, False):
                     # Load only once per session
