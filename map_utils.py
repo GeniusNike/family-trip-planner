@@ -172,10 +172,19 @@ def render_day_map(day_items: list[dict], height: int = 520, key: 'Optional[str]
     # streamlit-folium 버전에 따라 `key` 인자를 지원하지 않는 경우가 있습니다.
     # (Streamlit Cloud에서 requirements 캐시/고정으로 구버전이 남아있는 경우 등)
     # 먼저 key 포함 호출을 시도하고, TypeError면 key 없이 재시도합니다.
+    # 그래도 실패하면(환경/브라우저 이슈 등) Folium HTML 임베딩으로 폴백합니다.
     try:
-        st_folium(m, width=None, height=height, key=key)
-    except TypeError:
-        st_folium(m, width=None, height=height)
+        try:
+            st_folium(m, width=None, height=height, key=key)
+        except TypeError:
+            st_folium(m, width=None, height=height)
+    except Exception:
+        # 최후의 폴백: folium 지도를 HTML로 직접 임베딩
+        try:
+            import streamlit.components.v1 as components  # type: ignore
+            components.html(m._repr_html_(), height=height, scrolling=False)
+        except Exception:
+            st.error("지도 렌더링 중 문제가 발생했어요. folium/streamlit-folium 설치 상태를 확인해 주세요.")
 
 
 def get_coord_from_map_url(map_url: str):
