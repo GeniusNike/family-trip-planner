@@ -11,6 +11,11 @@ except Exception:
     requests = None
 
 
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
+def _resolve_short_url_cached(url: str) -> str:
+    return _resolve_short_url(url)
+
+
 def _resolve_short_url(url: str) -> str:
     """
     Resolve maps.app.goo.gl / goo.gl/maps short links to the final expanded URL.
@@ -43,6 +48,11 @@ def _geocode_address(addr: str):
     return None
 
 
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
+def _geocode_address_cached(addr: str):
+    return _geocode_address(addr)
+
+
 def extract_latlng_from_google_maps_url(url: str):
     """
     Best-effort extraction:
@@ -61,7 +71,7 @@ def extract_latlng_from_google_maps_url(url: str):
         parsed0 = urlparse(u)
         host0 = (parsed0.netloc or '').lower()
         if host0.endswith('maps.app.goo.gl') or host0.endswith('goo.gl'):
-            u = _resolve_short_url(u)
+            u = _resolve_short_url_cached(u)
     except Exception:
         pass
 
@@ -95,6 +105,19 @@ def extract_latlng_from_google_maps_url(url: str):
     return None
 
 
+def get_coord_from_map_url(map_url: str):
+    """Return (lat,lng) if possible; supports google maps links or address text."""
+    parsed = extract_latlng_from_google_maps_url(map_url)
+    if not parsed:
+        return None
+    kind, val = parsed
+    if kind == "latlng":
+        return val
+    if kind == "addr":
+        return _geocode_address_cached(val)
+    return None
+
+
 def collect_day_points(day_items: list[dict]):
     """Collect (lat,lng,title) list from schedule items."""
     pts = []
@@ -104,12 +127,16 @@ def collect_day_points(day_items: list[dict]):
         if not map_url:
             continue
 
-                coord = get_coord_from_map_url(map_url)
-        if coord:
-            lat, lng = coord
+        parsed = extract_latlng_from_google_maps_url(map_url)
+        if not parsed:
+            continue
+        kind, val = parsed
+        if kind == "latlng":
+            lat, lng = val
             pts.append((lat, lng, title))
-        elif kind == "addr":
-            coord = _geocode_address(val)
+            continue
+        if kind == "addr":
+            coord = _geocode_address_cached(val)
             if coord:
                 lat, lng = coord
                 pts.append((lat, lng, title))
