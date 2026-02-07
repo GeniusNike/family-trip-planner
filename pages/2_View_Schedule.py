@@ -108,27 +108,36 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
         if existing_ids:
             st.caption("기존 사진(삭제할 사진 체크)")
             st.caption("기존 사진(삭제할 사진 체크)")
-# Streamlit expander 내용은 '접혀 있어도' 매번 실행되므로,
-# '미리보기 로드' 버튼을 눌렀을 때만 Drive에서 다운로드합니다.
-preview_key = key_prefix + "prev_load"
-if preview_key not in st.session_state:
-    st.session_state[preview_key] = False
+            # Streamlit expander 내용은 '접혀 있어도' 내부 코드가 매번 실행될 수 있어요.
+            # 그래서 '미리보기 로드' 버튼을 눌렀을 때만 Drive에서 다운로드합니다.
+            preview_key = key_prefix + "prev_load"
+            if preview_key not in st.session_state:
+                st.session_state[preview_key] = False
 
-with st.expander(f"기존 사진 {len(existing_ids)}장 미리보기(필요할 때만 다운로드)", expanded=False):
-    if not st.session_state[preview_key]:
-        if st.button("⬇️ 미리보기 로드", key=key_prefix + "prev_load_btn", use_container_width=True):
-            st.session_state[preview_key] = True
-            st.rerun()
-        st.info("버튼을 누르면 기존 사진을 다운로드해서 보여줘요.")
-    else:
-        cols_prev = st.columns(3)
-        for i, fid in enumerate(existing_ids):
-            b = drive_store.get_image_bytes(fid)
-            col = cols_prev[i % 3]
-            if b:
-                col.image(b, use_container_width=True)
-            if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
-                delete_ids.add(fid)
+            with st.expander(f"기존 사진 {len(existing_ids)}장 미리보기(필요할 때만 다운로드)", expanded=False):
+                # 삭제 체크는 미리보기와 무관하게 가능하게 함(이미지 다운로드 없이도 체크 가능)
+                cols_prev = st.columns(3)
+                for i, fid in enumerate(existing_ids):
+                    col = cols_prev[i % 3]
+                    show_img = st.session_state.get(preview_key, False)
+
+                    if show_img:
+                        b = drive_store.get_image_bytes(fid)
+                        if b:
+                            col.image(b, use_container_width=True)
+                        else:
+                            col.caption("(이미지 로드 실패)")
+                    else:
+                        col.caption(f"사진 #{i+1}")
+
+                    if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
+                        delete_ids.add(fid)
+
+                if not st.session_state.get(preview_key, False):
+                    if st.button("⬇️ 미리보기 로드", key=key_prefix + "prev_load_btn", use_container_width=True):
+                        st.session_state[preview_key] = True
+                        st.rerun()
+                    st.info("버튼을 누르면 기존 사진을 다운로드해서 보여줘요.")
         pasted_or_uploaded_now = False
 
         paste_result = paste_image_button("📋 클립보드 이미지 붙여넣기(누적)", key=key_prefix + "paste_btn")
@@ -536,8 +545,17 @@ if view_mode == "타임라인":
             st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
 
         with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-            # streamlit-folium은 동일 페이지에서 여러 지도를 그릴 때 key가 없으면 빈 화면이 되는 경우가 있어요.
-            render_day_map(day_items, height=560, key=f"day_map_{trip_name}_{d}")
+            _mk = f"day_map_load_{trip_name}_{d}"
+            if _mk not in st.session_state:
+                st.session_state[_mk] = False
+
+            if not st.session_state[_mk]:
+                if st.button("🗺️ 지도 불러오기", key=_mk + "_btn", use_container_width=True):
+                    st.session_state[_mk] = True
+                    st.rerun()
+                st.caption("버튼을 누르면 해당 날짜의 지도/마커를 생성해요(기본 화면에서는 네트워크 호출을 하지 않아요).")
+            else:
+                render_day_map(day_items, height=560)
 
         for idx2, it in enumerate(day_items, start=1):
             t = (it.get("time") or "").strip()
@@ -576,7 +594,17 @@ for d in dates_sorted:
         st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
 
     with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-        render_day_map(day_items, height=560, key=f"day_map_{trip_name}_{d}")
+        _mk = f"day_map_load_{trip_name}_{d}"
+        if _mk not in st.session_state:
+            st.session_state[_mk] = False
+
+        if not st.session_state[_mk]:
+            if st.button("🗺️ 지도 불러오기", key=_mk + "_btn", use_container_width=True):
+                st.session_state[_mk] = True
+                st.rerun()
+            st.caption("버튼을 누르면 해당 날짜의 지도/마커를 생성해요(기본 화면에서는 네트워크 호출을 하지 않아요).")
+        else:
+            render_day_map(day_items, height=560)
 
     st.caption("구글맵에서 경유지가 입력된 순서(시간순)대로 잡혀요.")
 
