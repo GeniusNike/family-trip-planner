@@ -104,12 +104,9 @@ def collect_day_points(day_items: list[dict]):
         if not map_url:
             continue
 
-        info = extract_latlng_from_google_maps_url(map_url)
-        if not info:
-            continue
-        kind, val = info
-        if kind == "latlng":
-            lat, lng = val
+                coord = get_coord_from_map_url(map_url)
+        if coord:
+            lat, lng = coord
             pts.append((lat, lng, title))
         elif kind == "addr":
             coord = _geocode_address(val)
@@ -122,18 +119,26 @@ def collect_day_points(day_items: list[dict]):
 def render_day_map(day_items: list[dict], height: int = 520, **kwargs):
     """
     Render a big map with numbered markers (1,2,3...) and fit bounds.
-    Uses Folium + streamlit-folium.
+
+    ⚠️ Streamlit Cloud/브라우저/패키지 조합에 따라 streamlit-folium이 빈 화면을 만드는 경우가 있어서,
+    기본은 Folium HTML(iframe) 임베딩으로 렌더링하고, 가능하면 streamlit-folium도 시도합니다.
+
+    kwargs:
+      - key: (optional) unique key to avoid multi-map collisions
     """
     key: Optional[str] = kwargs.get("key")
+
+    # Folium import (required)
     try:
         import folium  # type: ignore
         from folium.features import DivIcon  # type: ignore
-        from streamlit_folium import st_folium  # type: ignore
     except Exception:
-        st.error("지도 표시를 위해 folium / streamlit-folium 패키지가 필요해요. requirements.txt를 업데이트해 주세요.")
+        st.error("지도 표시를 위해 folium 패키지가 필요해요. requirements.txt를 확인해 주세요.")
         return
 
     pts = collect_day_points(day_items)
+    st.caption(f"지도 포인트: {len(pts)}개")  # 작은 디버그 힌트(사용자에게도 도움)
+
     if len(pts) == 0:
         st.info(
             "이 날의 일정에서 좌표를 읽을 수 있는 Google 지도 링크가 없어요.\n\n"
@@ -170,26 +175,35 @@ def render_day_map(day_items: list[dict], height: int = 520, **kwargs):
     if len(bounds) >= 2:
         m.fit_bounds(bounds, padding=(30, 30))
 
-    # streamlit-folium 버전에 따라 `key` 인자를 지원하지 않는 경우가 있습니다.
-    # (Streamlit Cloud에서 requirements 캐시/고정으로 구버전이 남아있는 경우 등)
-    # 먼저 key 포함 호출을 시도하고, TypeError면 key 없이 재시도합니다.
-    # 그래도 실패하면(환경/브라우저 이슈 등) Folium HTML 임베딩으로 폴백합니다.
+    # 1) Try streamlit-folium (some envs render better), but NEVER fail silently.
+    rendered = False
     try:
+        from streamlit_folium import st_folium  # type: ignore
+
         try:
+            # Some versions accept key; some don't.
             st_folium(m, width=None, height=height, key=key)
         except TypeError:
             st_folium(m, width=None, height=height)
+        rendered = True
     except Exception:
-        # 최후의 폴백: folium 지도를 HTML로 직접 임베딩
+        rendered = False
+
+    # 2) Fallback: embed Folium HTML (reliable when st_folium glitches)
+    if not rendered:
         try:
             import streamlit.components.v1 as components  # type: ignore
-            components.html(m._repr_html_(), height=height, scrolling=False)
+            html = m.get_root().render()
+            components.html(html, height=height, scrolling=False)
         except Exception:
-            st.error("지도 렌더링 중 문제가 발생했어요. folium/streamlit-folium 설치 상태를 확인해 주세요.")
+            st.error("지도 렌더링 중 문제가 발생했어요. (folium/leaflet 리소스 차단 가능성도 있어요)")
+            return
 
 
-def get_coord_from_map_url(map_url: str):
+def _get_coord_from_map_url_uncached(map_url: str):
     """
+    Uncached coordinate extraction.
+
     Returns (lat,lng) if 가능한 경우.
     - short link resolve (maps.app.goo.gl) handled inside extract_latlng_from_google_maps_url via _resolve_short_url
     - address geocoding via Nominatim (best-effort)
@@ -205,3 +219,9 @@ def get_coord_from_map_url(map_url: str):
     if kind == "addr":
         return _geocode_address(val)
     return None
+
+
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24 * 30)
+def get_coord_from_map_url(map_url: str):
+    """Cached wrapper for coordinate extraction to speed up schedule view."""
+    return _get_coord_from_map_url_uncached(map_url)

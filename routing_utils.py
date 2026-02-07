@@ -21,6 +21,7 @@ def format_date_with_dow_kr(date_str: str) -> str:
         return date_str
 
 
+@st.cache_data(show_spinner=False, ttl=60 * 60 * 24 * 30)
 def _osrm_distance_m(lat1: float, lng1: float, lat2: float, lng2: float):
     """
     Road distance via OSRM demo server (driving).

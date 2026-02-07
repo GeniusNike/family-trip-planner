@@ -107,17 +107,28 @@ def _inline_edit_dialog(db: dict, trip_name: str, item: dict):
         delete_ids = set()
         if existing_ids:
             st.caption("기존 사진(삭제할 사진 체크)")
-            with st.expander(f"기존 사진 {len(existing_ids)}장 미리보기(눌렀을 때만 다운로드)", expanded=False):
-                cols_prev = st.columns(3)
-                for i, fid in enumerate(existing_ids):
-                    # 미리보기는 다이얼로그를 열자마자 자동으로 가져오지 않도록 지연 로딩
-                    b = drive_store.get_image_bytes(fid)
-                    col = cols_prev[i % 3]
-                    if b:
-                        col.image(b, use_container_width=True)
-                    if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
-                        delete_ids.add(fid)
+            st.caption("기존 사진(삭제할 사진 체크)")
+# Streamlit expander 내용은 '접혀 있어도' 매번 실행되므로,
+# '미리보기 로드' 버튼을 눌렀을 때만 Drive에서 다운로드합니다.
+preview_key = key_prefix + "prev_load"
+if preview_key not in st.session_state:
+    st.session_state[preview_key] = False
 
+with st.expander(f"기존 사진 {len(existing_ids)}장 미리보기(필요할 때만 다운로드)", expanded=False):
+    if not st.session_state[preview_key]:
+        if st.button("⬇️ 미리보기 로드", key=key_prefix + "prev_load_btn", use_container_width=True):
+            st.session_state[preview_key] = True
+            st.rerun()
+        st.info("버튼을 누르면 기존 사진을 다운로드해서 보여줘요.")
+    else:
+        cols_prev = st.columns(3)
+        for i, fid in enumerate(existing_ids):
+            b = drive_store.get_image_bytes(fid)
+            col = cols_prev[i % 3]
+            if b:
+                col.image(b, use_container_width=True)
+            if col.checkbox("삭제", key=key_prefix + f"del_{fid}"):
+                delete_ids.add(fid)
         pasted_or_uploaded_now = False
 
         paste_result = paste_image_button("📋 클립보드 이미지 붙여넣기(누적)", key=key_prefix + "paste_btn")
