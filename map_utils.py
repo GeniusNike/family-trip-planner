@@ -9,7 +9,6 @@ except Exception:
     requests = None
 
 
-@st.cache_data(show_spinner=False)
 def _resolve_short_url(url: str) -> str:
     """
     Resolve maps.app.goo.gl / goo.gl/maps short links to the final expanded URL.
@@ -28,7 +27,6 @@ except Exception:
     Nominatim = None
 
 
-@st.cache_data(show_spinner=False)
 def _geocode_address(addr: str):
     """Geocode with OpenStreetMap Nominatim (best-effort). Cached to avoid rate limits."""
     if not addr or not Nominatim:
@@ -119,7 +117,7 @@ def collect_day_points(day_items: list[dict]):
     return pts
 
 
-def render_day_map(day_items: list[dict], height: int = 520):
+def render_day_map(day_items: list[dict], height: int = 520, map_key: str | None = None):
     """
     Render a big map with numbered markers (1,2,3...) and fit bounds.
     Uses Folium + streamlit-folium.
@@ -169,10 +167,16 @@ def render_day_map(day_items: list[dict], height: int = 520):
     if len(bounds) >= 2:
         m.fit_bounds(bounds, padding=(30, 30))
 
-    st_folium(m, width=None, height=height)
+    # NOTE:
+    # Streamlit pages often render multiple maps (e.g., one per day) inside loops/expanders.
+    # streamlit-folium is a custom component and can collide if keys are not unique.
+    # Providing a stable per-map key prevents "blank map" / non-updating behavior.
+    if map_key is not None:
+        st_folium(m, width=None, height=height, key=map_key)
+    else:
+        st_folium(m, width=None, height=height)
 
 
-@st.cache_data(show_spinner=False)
 def get_coord_from_map_url(map_url: str):
     """
     Returns (lat,lng) if 가능한 경우.

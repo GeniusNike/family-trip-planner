@@ -6,7 +6,7 @@ st.set_page_config(page_title="가족 여행 플래너", page_icon="🧳", layou
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
 
 st.title("🧳 가족 여행 플래너")
-st.caption("Streamlit Cloud + Google Drive 저장(OAuth)")
+st.caption("Streamlit Cloud + Google Drive 저장(OAuth) · v3_15")
 
 db = load_db(ROOT_FOLDER_ID)
 names = list_trip_names(db)

@@ -30,6 +30,13 @@ from routing_utils import format_date_with_dow_kr, driving_km_between, compute_d
 
 st.set_page_config(page_title="일정 보기", page_icon="👀", layout="wide")
 
+# v3_15: 사진은 일정별로 버튼을 눌렀을 때만 불러옵니다(지연 로딩).
+if "photo_open" not in st.session_state:
+    st.session_state.photo_open = {}  # item_id -> bool
+if "photo_data" not in st.session_state:
+    st.session_state.photo_data = {}  # item_id -> list[bytes]
+
+
 ROOT_FOLDER_ID = st.secrets["drive"]["root_folder_id"]
 
 def _find_item_by_id(db: dict, trip_name: str, item_id: str):
@@ -291,9 +298,8 @@ for idx, it in enumerate(items):
         it["map_text"] = txt
 
 with st.sidebar:
-    st.subheader("보기 옵션")
+    st.subheader("보기 옵션 · v3_15")
     view_mode = st.radio("보기", ["카드", "표", "타임라인"], index=0)
-    show_images = st.checkbox("이미지 표시(카드)", value=True)
     keyword = st.text_input("키워드(제목/메모)", placeholder="예: 맛집 / 공항 / 호텔")
 
 def _match(it):
@@ -518,7 +524,7 @@ if view_mode == "타임라인":
             st.caption("이동 코스를 만들려면 지도/주소가 2개 이상 필요해.")
 
         with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-            render_day_map(day_items, height=560)
+            render_day_map(day_items, height=560, map_key=f"daymap_{trip_name}_{d}")
 
         for idx2, it in enumerate(day_items, start=1):
             t = (it.get("time") or "").strip()
@@ -557,7 +563,7 @@ for d in dates_sorted:
         st.link_button("🧭 그날 이동 코스(구글맵)", route_url)
 
     with st.expander("🗺️ 그날 전체 지도(번호 표시) 보기", expanded=False):
-        render_day_map(day_items, height=560)
+        render_day_map(day_items, height=560, map_key=f"daymap_{trip_name}_{d}")
 
     st.caption("구글맵에서 경유지가 입력된 순서(시간순)대로 잡혀요.")
 
@@ -580,18 +586,33 @@ for d in dates_sorted:
             if memo:
                 st.write(memo)
 
-            # photos
-            if show_images:
-                image_ids = it.get("image_file_ids") or []
-                if image_ids:
-                    imgs = []
-                    for fid in image_ids:
-                        b = get_image_bytes(fid)
-                        if b:
-                            imgs.append(b)
+            # photos (lazy-load per item)
+            image_ids = it.get("image_file_ids") or []
+            if image_ids:
+                item_id = it.get("id") or f"{it.get('date','')}_{it.get('time','')}_{it.get('title','')}"
+                opened = st.session_state.photo_open.get(item_id, False)
+                btn_label = "📷 사진 보기" if not opened else "🙈 사진 숨기기"
+                if st.button(btn_label, key=f"photo_btn_{item_id}", width='stretch'):
+                    st.session_state.photo_open[item_id] = not opened
+                    st.rerun()
+
+                if st.session_state.photo_open.get(item_id, False):
+                    # Load only once per session
+                    if item_id not in st.session_state.photo_data:
+                        with st.spinner("사진 불러오는 중..."):
+                            imgs = []
+                            for fid in image_ids:
+                                b = get_image_bytes(fid)
+                                if b:
+                                    imgs.append(b)
+                            st.session_state.photo_data[item_id] = imgs
+
+                    imgs = st.session_state.photo_data.get(item_id, [])
                     if imgs:
                         st.caption("📷 사진")
                         st.image(imgs, width='stretch')
+                    else:
+                        st.warning("표시할 사진이 없습니다.")
             # actions (edit/delete) - keep existing helper function if present
             cols = st.columns([1, 1, 6])
             if cols[0].button("✏️ 수정", key=f"edit_{it.get('id','')}", width='stretch'):
